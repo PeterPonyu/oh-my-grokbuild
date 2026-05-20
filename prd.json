@@ -48,8 +48,8 @@
       "id": "US-005",
       "title": "Smoke and sanity validator enforces the new layout",
       "acceptanceCriteria": [
-        "node scripts/validate.mjs --smoke exits 0 and prints [OMGB] smoke passed.",
-        "node scripts/validate.mjs --sanity exits 0 and prints [OMGB] sanity passed.",
+        "node scripts/ci/validate.mjs --smoke exits 0 and prints [OMGB] smoke passed.",
+        "node scripts/ci/validate.mjs --sanity exits 0 and prints [OMGB] sanity passed.",
         "Validator rejects any extra SKILL.md, any role missing from agents/ or roles/, any role with malformed frontmatter, any plugin manifest declaring hooks, MCP servers, commands, or agents, and any presence of forbidden hooks/, mcps/, mcp/, or commands/ directories.",
         "npm test exits 0 and runs both --smoke and --sanity."
       ],
@@ -59,9 +59,9 @@
       "id": "US-006",
       "title": "E2E validation against existing Grok login",
       "acceptanceCriteria": [
-        "scripts/e2e.sh exists and is executable.",
-        "scripts/e2e.sh asserts ~/.grok/auth.json exists before continuing and refuses to log in for the user.",
-        "scripts/e2e.sh prints [OMGB] e2e passed only when grok inspect, a headless grok -p reachability probe, and the plugin payload check all succeed.",
+        "scripts/local/e2e.sh exists and is executable.",
+        "scripts/local/e2e.sh asserts ~/.grok/auth.json exists before continuing and refuses to log in for the user.",
+        "scripts/local/e2e.sh prints [OMGB] e2e passed only when grok inspect, a headless grok -p reachability probe, and the plugin payload check all succeed.",
         "An E2E run on this machine produces a trace at .omc/evidence/e2e-<timestamp>.log that contains [OMGB] e2e passed."
       ],
       "passes": true
@@ -70,10 +70,10 @@
       "id": "US-007",
       "title": "Local install into ~/.grok/plugins/local",
       "acceptanceCriteria": [
-        "scripts/install-local.sh exists, is executable, and copies the minimal runtime payload to ~/.grok/plugins/local/oh-my-grokbuild.",
+        "scripts/local/install-local.sh exists, is executable, and copies the minimal runtime payload to ~/.grok/plugins/local/oh-my-grokbuild.",
         "The installed payload contains plugin.json, .claude-plugin/plugin.json, skills/omgb/SKILL.md, agents/ with 16 role files, and roles/ with 16 role configs.",
-        "Running scripts/install-local.sh on this machine produces no errors and prints an [OMGB] install ok marker.",
-        "scripts/install-local.sh does not require sudo, network access, or any package install."
+        "Running scripts/local/install-local.sh on this machine produces no errors and prints an [OMGB] install ok marker.",
+        "scripts/local/install-local.sh does not require sudo, network access, or any package install."
       ],
       "passes": true
     },

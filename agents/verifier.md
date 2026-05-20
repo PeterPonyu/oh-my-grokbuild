@@ -76,7 +76,7 @@ blockers:
 ## CI / Testing / E2E Expectations
 
 - The verifier consumes test-engineer output and re-runs commands as needed.
-- For E2E-affecting work, the verifier requires a passing `scripts/e2e.sh` trace.
+- For E2E-affecting work, the verifier requires a passing `scripts/local/e2e.sh` trace.
 
 ## Interaction
 

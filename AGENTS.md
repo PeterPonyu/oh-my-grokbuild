@@ -16,7 +16,7 @@ Before claiming completion, run:
 
 ```bash
 npm test          # smoke + sanity
-bash scripts/e2e.sh   # asserts ~/.grok/auth.json; refuses to grok login
+bash scripts/local/e2e.sh   # asserts ~/.grok/auth.json; refuses to grok login
 ```
 
 Expected markers:

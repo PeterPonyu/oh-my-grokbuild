@@ -30,7 +30,7 @@ A teammate using Claude Code (or similar) can take that folder (or the six files
 The Grok user runs:
 
 ```bash
-scripts/export-omgb-handoff.sh <task-slug>
+scripts/ci/export-omgb-handoff.sh <task-slug>
 ```
 
 Then zips or tars the entire run directory:
@@ -121,4 +121,4 @@ This pattern gives you the best of both worlds: Grok's persistent role-team orch
 ---
 
 **Maintained as part of the oh-my-grokbuild plugin.**  
-See also the main README "Sharing & Handoff" section and `scripts/doctor.sh` output for quick commands.
+See also the main README "Sharing & Handoff" section and `scripts/local/doctor.sh` output for quick commands.

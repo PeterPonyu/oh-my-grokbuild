@@ -4,7 +4,7 @@
 > not allowed to synthesize reviewer verdicts in a single context. See the
 > "Mandatory Subagent Spawning" section in `skills/omgb/SKILL.md` and the
 > Spawning Discipline section in `agents/leader.md`. The auditor at
-> `node scripts/validate.mjs --audit-run <slug>` is the enforcement gate.
+> `node scripts/ci/validate.mjs --audit-run <slug>` is the enforcement gate.
 
 
 This document explains how to actually launch an OMGB run where the different roles (leader, codebase-scout, executor, verifier, etc.) run as **real Grok subagents** instead of being simulated in a single context.
@@ -91,23 +91,23 @@ The leader will receive reports from the other roles as they complete their assi
 
 ## Helper Script (Recommended)
 
-Use `scripts/launch-omgb-team.sh`:
+Use `scripts/local/launch-omgb-team.sh`:
 
 ```bash
 # Dry-run: write the 16-role agents JSON and print the exact grok command
-scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
+scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
 
 # Actually launch the team (subagents spawn in parallel under grok)
-scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
 
 # Smaller team for a focused task
-scripts/launch-omgb-team.sh perf-audit "Audit hot paths" \
+scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" \
   --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
 ```
 
 The launcher:
 
-- Validates the source repo via `scripts/validate.mjs --smoke` before doing anything.
+- Validates the source repo via `scripts/ci/validate.mjs --smoke` before doing anything.
 - Builds the JSON from disk (all 16 roles by default).
 - Verifies the JSON parses before printing or launching.
 - Defaults to dry-run; `--launch` invokes Grok with `-s`, `--cwd`, `-p`, `--agents`.
@@ -117,8 +117,8 @@ The launcher:
 After a run finishes, run the audit:
 
 ```bash
-node scripts/validate.mjs --audit-run <slug>
-node scripts/validate.mjs --audit-all
+node scripts/ci/validate.mjs --audit-run <slug>
+node scripts/ci/validate.mjs --audit-all
 ```
 
 The audit checks that every `state.json.activeRoles` entry has a real
@@ -162,7 +162,7 @@ This task is closing those gaps.
 In environments where subagent spawning is available, you can validate the setup with:
 
 ```bash
-node scripts/validate.mjs --subagents   # (planned addition)
+node scripts/ci/validate.mjs --subagents   # (planned addition)
 ```
 
 Or simply attempt a small launch with 3–4 roles and observe that they receive distinct tasks from `tasks.json` and report back.

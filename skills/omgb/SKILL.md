@@ -58,7 +58,7 @@ That is now a contract violation, not a fallback.
 
 Use one of these mechanisms, in order of preference:
 
-1. **`grok --agents <JSON>` at session start** — the canonical path. The team launcher (`scripts/launch-omgb-team.sh`) emits the JSON for all 16 roles from disk. Grok then routes each `Task`-style instruction to the named subagent.
+1. **`grok --agents <JSON>` at session start** — the canonical path. The team launcher (`scripts/local/launch-omgb-team.sh`) emits the JSON for all 16 roles from disk. Grok then routes each `Task`-style instruction to the named subagent.
 2. **`grok --agent <role-file>` per-task** — for headless single-role probes from within an active session.
 3. **The Task tool inside the TUI** — when the host exposes it, the leader emits `Task(agent="<role>", prompt="…")` to spawn a worker. Record the Task call id in evidence.
 
@@ -91,7 +91,7 @@ no Task tool), the leader does **not** silently synthesize. Instead:
 
 1. Add a blocker to `state.json.blockers`: `"subagent-spawn-unavailable"`.
 2. Stop and ask the user to either:
-   - Re-launch via `scripts/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports `--agents`, or
+   - Re-launch via `scripts/local/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports `--agents`, or
    - Add `OMGB_ALLOW_SYNTHESIS: true` to `mission.md` to explicitly opt into single-context mode for this run. The synthesis opt-in is recorded for every activated role with `spawn_method: unavailable` plus a `Synthesis Justification:` line so the audit tool can flag it.
 3. Do not mark `state.active=false` until the user resolves the choice.
 
@@ -100,7 +100,7 @@ no Task tool), the leader does **not** silently synthesize. Instead:
 Before Finalization (Phase 7), the leader MUST run the audit:
 
 ```bash
-node scripts/validate.mjs --audit-run <task-slug>
+node scripts/ci/validate.mjs --audit-run <task-slug>
 ```
 
 The audit fails if any `activeRole` lacks a `## Subagent: <role>` block, or if
@@ -313,7 +313,7 @@ spawn whose evidence block is in `evidence.md`.**
 1. Ensure every task is `completed`, `cancelled`, or `blocked` with explanation.
 2. Ensure `evidence.md` contains fresh verification output.
 3. Ensure `review.md` has final verdicts from real reviewer spawns.
-4. Run `node scripts/validate.mjs --audit-run <task-slug>` and record the result. If it fails, do not finalize.
+4. Run `node scripts/ci/validate.mjs --audit-run <task-slug>` and record the result. If it fails, do not finalize.
 5. Set `state.active` false and `phase: "complete"` only when verified.
 6. Report changed files, commands run, review verdicts, residual risks, and next optional actions.
 
@@ -323,7 +323,7 @@ When invoking Grok from a shell for an OMGB run, prefer a named session with
 the full team JSON:
 
 ```bash
-scripts/launch-omgb-team.sh <short-slug> "<task>" --launch
+scripts/local/launch-omgb-team.sh <short-slug> "<task>" --launch
 ```
 
 That command writes the agents JSON, runs the validator, and invokes:
@@ -349,9 +349,9 @@ append a self-verification loop in headless mode.
 For plugin development, the leader must run:
 
 ```bash
-node scripts/validate.mjs --smoke
-node scripts/validate.mjs --sanity
-node scripts/validate.mjs --audit-run <task-slug>
+node scripts/ci/validate.mjs --smoke
+node scripts/ci/validate.mjs --sanity
+node scripts/ci/validate.mjs --audit-run <task-slug>
 npm test
 ```
 
@@ -364,7 +364,7 @@ Expected success markers:
 For end-to-end validation against the user's existing Grok login:
 
 ```bash
-scripts/e2e.sh
+scripts/local/e2e.sh
 ```
 
 Expected success marker:

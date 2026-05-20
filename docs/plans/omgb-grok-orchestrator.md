@@ -11,8 +11,8 @@ Build a conservative Grok Build plugin package that provides one `/omgb` skill f
 
 ## Acceptance Criteria
 
-- [ ] `node scripts/validate.mjs --smoke` reports `[OMGB] smoke passed`.
-- [ ] `node scripts/validate.mjs --sanity` reports `[OMGB] sanity passed`.
+- [ ] `node scripts/ci/validate.mjs --smoke` reports `[OMGB] smoke passed`.
+- [ ] `node scripts/ci/validate.mjs --sanity` reports `[OMGB] sanity passed`.
 - [ ] `npm test` passes without installing dependencies.
 - [ ] The validator confirms exactly one skill exists.
 - [ ] The manifests do not declare hooks, MCP servers, commands, or agent plugin surfaces.
@@ -26,7 +26,7 @@ Build a conservative Grok Build plugin package that provides one `/omgb` skill f
 3. Write `agents/AGENTS.md` as the role catalog loaded by the skill.
 4. Add research docs from official Grok docs and local oh-my-* inspection.
 5. Add `prd.json` for iterate-loop traceability.
-6. Add `scripts/validate.mjs` for smoke and sanity gates.
+6. Add `scripts/ci/validate.mjs` for smoke and sanity gates.
 7. Run smoke, sanity, and `npm test`; fix until green.
 8. Perform code and security review over the resulting package.
 
@@ -38,6 +38,6 @@ Build a conservative Grok Build plugin package that provides one `/omgb` skill f
 
 ## Verification
 
-- `node scripts/validate.mjs --smoke`
-- `node scripts/validate.mjs --sanity`
+- `node scripts/ci/validate.mjs --smoke`
+- `node scripts/ci/validate.mjs --sanity`
 - `npm test`

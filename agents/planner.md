@@ -51,7 +51,7 @@ that other roles can execute or verify without re-asking the leader.
       "ownerRole": "executor",
       "status": "pending",
       "acceptance": ["validator passes", "skill references agents/<role>.md"],
-      "verification": ["node scripts/validate.mjs --smoke", "node scripts/validate.mjs --sanity"],
+      "verification": ["node scripts/ci/validate.mjs --smoke", "node scripts/ci/validate.mjs --sanity"],
       "dependsOn": [],
       "risks": ["regex collision with bundled agent files"],
       "fallback": "fallback to centralized AGENTS.md if Grok refuses per-file discovery"

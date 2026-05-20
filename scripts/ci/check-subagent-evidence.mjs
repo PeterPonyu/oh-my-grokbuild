@@ -1,10 +1,10 @@
-// scripts/check-subagent-evidence.mjs
+// scripts/ci/check-subagent-evidence.mjs
 //
 // Audit a completed OMGB run for real subagent spawn evidence.
 //
 // Usage:
-//   node scripts/check-subagent-evidence.mjs <task-slug>
-//   node scripts/check-subagent-evidence.mjs --all
+//   node scripts/ci/check-subagent-evidence.mjs <task-slug>
+//   node scripts/ci/check-subagent-evidence.mjs --all
 //
 // Exits non-zero with `[OMGB] audit blocked` if any active role lacks a
 // `## Subagent: <role>` block in evidence.md, or if a block claims
@@ -21,7 +21,7 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-const root = fileURLToPath(new URL("..", import.meta.url))
+const root = fileURLToPath(new URL("../..", import.meta.url))
 const runsRoot = path.join(root, ".grok", "omgb", "runs")
 
 const ALLOWED_SPAWN_METHODS = new Set([
@@ -228,7 +228,7 @@ function printReport(report) {
 const args = process.argv.slice(2)
 
 if (args.length === 0 || args.includes("--help")) {
-  console.log("Usage: node scripts/check-subagent-evidence.mjs <slug> | --all")
+  console.log("Usage: node scripts/ci/check-subagent-evidence.mjs <slug> | --all")
   process.exit(args.length === 0 ? 1 : 0)
 }
 

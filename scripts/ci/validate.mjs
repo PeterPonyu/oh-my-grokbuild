@@ -3,7 +3,7 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
-const root = fileURLToPath(new URL("..", import.meta.url))
+const root = fileURLToPath(new URL("../..", import.meta.url))
 
 const requiredRoles = [
   "leader",
@@ -178,9 +178,9 @@ function runSmoke() {
   assertExists(".claude-plugin/plugin.json")
   assertExists("skills/omgb/SKILL.md")
   assertExists("agents/ROLE-INDEX.md")
-  assertExists("scripts/validate.mjs")
-  assertExists("scripts/e2e.sh")
-  assertExists("scripts/install-local.sh")
+  assertExists("scripts/ci/validate.mjs")
+  assertExists("scripts/local/e2e.sh")
+  assertExists("scripts/local/install-local.sh")
 
   assertManifestIsSkillsOnly("plugin.json")
   assertManifestIsSkillsOnly(".claude-plugin/plugin.json")
@@ -400,10 +400,10 @@ function usage() {
   console.log(
     [
       "Usage:",
-      "  node scripts/validate.mjs --smoke",
-      "  node scripts/validate.mjs --sanity",
-      "  node scripts/validate.mjs --audit-run <slug>",
-      "  node scripts/validate.mjs --audit-all",
+      "  node scripts/ci/validate.mjs --smoke",
+      "  node scripts/ci/validate.mjs --sanity",
+      "  node scripts/ci/validate.mjs --audit-run <slug>",
+      "  node scripts/ci/validate.mjs --audit-all",
     ].join("\n"),
   )
 }
@@ -426,7 +426,7 @@ async function runAudit(auditArgs) {
   return new Promise((resolve) => {
     const child = spawn(
       process.execPath,
-      [path.join(root, "scripts", "check-subagent-evidence.mjs"), ...auditArgs],
+      [path.join(root, "scripts", "ci", "check-subagent-evidence.mjs"), ...auditArgs],
       { stdio: "inherit" },
     )
     child.on("exit", (code) => resolve(code ?? 1))

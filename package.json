@@ -1,12 +1,12 @@
 {
   "name": "oh-my-grokbuild",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "One-skill Grok Build orchestration plugin with persistent role-team workflow guidance.",
   "type": "module",
   "private": true,
   "scripts": {
-    "smoke": "node scripts/validate.mjs --smoke",
-    "sanity": "node scripts/validate.mjs --sanity",
+    "smoke": "node scripts/ci/validate.mjs --smoke",
+    "sanity": "node scripts/ci/validate.mjs --sanity",
     "test": "npm run smoke && npm run sanity"
   },
   "keywords": [

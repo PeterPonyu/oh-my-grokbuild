@@ -78,7 +78,7 @@ and add regression tests when coverage is missing.
 
 ## CI / E2E Expectations
 
-- For this plugin: run `node scripts/validate.mjs --smoke`, `node scripts/validate.mjs --sanity`, `npm test`, and `scripts/e2e.sh` when E2E is in scope.
+- For this plugin: run `node scripts/ci/validate.mjs --smoke`, `node scripts/ci/validate.mjs --sanity`, `npm test`, and `scripts/local/e2e.sh` when E2E is in scope.
 - For user repos: use the documented commands found by the scout.
 
 ## Interaction

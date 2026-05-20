@@ -1,8 +1,70 @@
 # Changelog
 
+## 0.3.0 — 2026-05-20
+
+Scripts regrouped by audience + tightened `.gitignore` + git author corrected.
+
+### Script reorg (breaking change for direct path users)
+
+Scripts moved out of the flat `scripts/` directory into two folders that
+match their audience and authentication requirements:
+
+```
+scripts/
+├── README.md
+├── ci/                                # code-level, no auth needed
+│   ├── validate.mjs
+│   ├── check-subagent-evidence.mjs
+│   └── export-omgb-handoff.sh
+└── local/                             # needs Grok auth or touches ~/.grok
+    ├── install-local.sh
+    ├── doctor.sh
+    ├── e2e.sh
+    └── launch-omgb-team.sh
+```
+
+- `scripts/ci/` runs in any CI runner without provisioning a Grok login or
+  `~/.grok/` mounts. It's the surface a generic GitHub Actions workflow can
+  rely on.
+- `scripts/local/` is the only place that mutates user state or invokes
+  the Grok CLI. Code review and audits can focus there.
+- All cross-references (README, SKILL.md, CHANGELOG, prd.json, every
+  agent .md, every script-to-script call, package.json scripts, doc
+  examples) are updated.
+- ROOT path computation in each moved script is bumped from `../` to
+  `../../` so they continue to resolve the repo root.
+
+### `.gitignore`
+
+Expanded to keep workspace noise out of source:
+
+- Editor and OS junk: `.vscode/`, `.idea/`, `*.swp`, `*.swo`, `Thumbs.db`, `desktop.ini`, `*~`.
+- All of `.grok/` (not just `.grok/omgb/runs/`) so runtime mounts and
+  caches never leak in.
+- Python scratch (`__pycache__/`, `*.pyc`, `.venv/`, `venv/`) for
+  drive-by virtualenvs.
+- Local scratch: `scratch/`, `tmp/`, `.tmp/`, `*.tmp`, `*.bak`.
+
+### Author identity
+
+Local repo's `user.name` and `user.email` corrected to
+`PeterPonyu` / `fuzeyu09@gmail.com`. Earlier commits' authorship is left
+intact (no history rewrite); only new commits use the corrected identity.
+
+### Verified locally post-reorg
+
+```
+npm test                                      -> smoke + sanity green
+node scripts/ci/validate.mjs --audit-all      -> correctly blocks 5 legacy runs
+                                                 (exit 1), skips 4 stubs
+scripts/local/e2e.sh                          -> [OMGB] e2e passed
+scripts/local/doctor.sh                       -> "Looks good", all checks green
+scripts/local/launch-omgb-team.sh dry-test    -> 16-role JSON validated
+```
+
 ## 0.2.1 — 2026-05-20
 
-Bug fix: `scripts/launch-omgb-team.sh --launch` was invoking grok with
+Bug fix: `scripts/local/launch-omgb-team.sh --launch` was invoking grok with
 `--agents "@<config>"`, which Grok 0.1.212 rejects:
 
 ```
@@ -17,7 +79,7 @@ copy-paste works.
 Verified by a real live run on this machine:
 
 ```
-scripts/launch-omgb-team.sh v020-smoke "<task>"        # dry-run
+scripts/local/launch-omgb-team.sh v020-smoke "<task>"        # dry-run
 grok -s omgb-v020-smoke --cwd "$PWD" --agents "$(cat ...agents-config.json)" \
   --no-memory --no-plan --disable-web-search --max-turns 40 \
   -p "/omgb <task>"
@@ -46,21 +108,21 @@ contract. This release makes the contract enforceable.
 - All 16 `agents/<role>.md` files now require a uniform "Worker Output
   Marker" block (`### WORKER START <role>` / `### WORKER END <role>`) so
   the leader records subagent output verbatim instead of paraphrasing.
-- `scripts/check-subagent-evidence.mjs` (new) audits a run for
+- `scripts/ci/check-subagent-evidence.mjs` (new) audits a run for
   `## Subagent: <role>` blocks against `state.json.activeRoles` and the
   reviewers cited in `review.md`. Exits non-zero on missing or unjustified
   spawn evidence.
-- `scripts/validate.mjs` gains `--audit-run <slug>` and `--audit-all`
+- `scripts/ci/validate.mjs` gains `--audit-run <slug>` and `--audit-all`
   modes that delegate to the auditor and propagate its exit code.
-- `scripts/launch-omgb-team.sh` rewritten:
+- `scripts/local/launch-omgb-team.sh` rewritten:
   - Builds the agents JSON from all 16 roles on disk (no hardcoded subset).
   - Dry-run by default; `--launch` invokes Grok via `grok -s … --agents @…`.
   - Optional `--roles "csv"` to pick a slimmer team for small tasks.
   - Validates the JSON before exit.
-- `scripts/e2e.sh` adds a "subagent team launcher (dry-run)" step that
+- `scripts/local/e2e.sh` adds a "subagent team launcher (dry-run)" step that
   generates a 16-role agents JSON and validates it, plus an informational
   audit-all step.
-- `scripts/doctor.sh` adds 16-agent/role symmetry and launcher dry-run
+- `scripts/local/doctor.sh` adds 16-agent/role symmetry and launcher dry-run
   checks.
 - Synthesis opt-in: a run can put `OMGB_ALLOW_SYNTHESIS: true` in its
   `mission.md` to explicitly allow single-context mode. The auditor still
@@ -72,22 +134,22 @@ contract. This release makes the contract enforceable.
 
 Verified locally on this machine:
   npm test                          -> smoke + sanity green
-  scripts/e2e.sh                    -> [OMGB] e2e passed (incl. launcher
+  scripts/local/e2e.sh                    -> [OMGB] e2e passed (incl. launcher
                                        probe + informational audit-all)
-  scripts/doctor.sh                 -> "Looks good", all checks green
-  scripts/launch-omgb-team.sh ...   -> 16-role JSON written and validated
-  scripts/validate.mjs --audit-all  -> correctly blocks 5 legacy runs;
+  scripts/local/doctor.sh                 -> "Looks good", all checks green
+  scripts/local/launch-omgb-team.sh ...   -> 16-role JSON written and validated
+  scripts/ci/validate.mjs --audit-all  -> correctly blocks 5 legacy runs;
                                        skips one with no state.json
 
 ## 0.1.1 — 2026-05-20
 
-- `scripts/install-local.sh` now also mounts the omgb skill at
+- `scripts/local/install-local.sh` now also mounts the omgb skill at
   `~/.grok/skills/omgb/` via symlinks (`SKILL.md`, `agents/`, `roles/`).
   This is what makes `/omgb` discoverable in `grok inspect` and invocable
   from a fresh Grok session. The plugin payload at
   `~/.grok/plugins/local/oh-my-grokbuild/` is still written for a future
   marketplace flow. Set `OMGB_SKIP_USER_SKILL_MOUNT=1` to opt out.
-- `scripts/e2e.sh` now verifies the user-skill mount is healthy and that
+- `scripts/local/e2e.sh` now verifies the user-skill mount is healthy and that
   `grok inspect` lists `omgb` as a user skill. Set
   `OMGB_E2E_SKIP_USER_SKILL_MOUNT=1` to opt out.
 - Live invocation confirmed against this machine's existing Grok login:
@@ -109,13 +171,13 @@ Initial release.
     `default_capability_mode`, `reasoning_effort`, `default_fork_context`.
 - Skills-only manifests (`plugin.json`, `.claude-plugin/plugin.json`). No MCP
   servers, hooks, commands, or registered agent plugin surfaces.
-- Validator (`scripts/validate.mjs`) enforces the new layout, role inventory,
+- Validator (`scripts/ci/validate.mjs`) enforces the new layout, role inventory,
   read-only / mutating partition, frontmatter integrity, and `[OMGB]` pass
   markers.
-- E2E script (`scripts/e2e.sh`) that reuses an existing Grok login at
+- E2E script (`scripts/local/e2e.sh`) that reuses an existing Grok login at
   `~/.grok/auth.json` and never invokes `grok login` itself. Optional
   `OMGB_E2E_HEADLESS=1` adds a live `grok -p` reachability probe.
-- Local installer (`scripts/install-local.sh`) writes a minimal payload to
+- Local installer (`scripts/local/install-local.sh`) writes a minimal payload to
   `~/.grok/plugins/local/oh-my-grokbuild`.
 - Grounded research notes under `docs/research/` covering official xAI docs,
   the local Grok client (`0.1.212`) capabilities, the native

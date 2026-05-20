@@ -31,9 +31,9 @@ skills/omgb/SKILL.md              # the single entry-point skill
 agents/ROLE-INDEX.md              # thin index (deliberately not AGENTS.md)
 agents/<role>.md                  # 16 detailed Grok-native agent prompts
 roles/<role>.toml                 # 16 Grok-native capability configs
-scripts/validate.mjs              # smoke + sanity validator
-scripts/e2e.sh                    # end-to-end probe against existing login
-scripts/install-local.sh          # local install into ~/.grok/plugins/local
+scripts/ci/validate.mjs              # smoke + sanity validator
+scripts/local/e2e.sh                    # end-to-end probe against existing login
+scripts/local/install-local.sh          # local install into ~/.grok/plugins/local
 docs/research/                    # grounded research notes
 prd.json                          # task PRD with acceptance criteria
 ```
@@ -48,17 +48,17 @@ The 16 roles are: `leader`, `intake-analyst`, `researcher`, `codebase-scout`,
 ## Install
 
 ### Prerequisites
-- Node.js (v18+) — the validator (`scripts/validate.mjs`) is ESM.
+- Node.js (v18+) — the validator (`scripts/ci/validate.mjs`) is ESM.
 - A working `grok` CLI with an authenticated session (`~/.grok/auth.json` for e2e).
 - The repo cloned locally (this is the source of truth; the TUI loads via symlinks).
 
 ### One-command local install
 
 ```bash
-scripts/install-local.sh --force
+scripts/local/install-local.sh --force
 ```
 
-- Runs `node scripts/validate.mjs --smoke` as a mandatory preflight.
+- Runs `node scripts/ci/validate.mjs --smoke` as a mandatory preflight.
 - Copies the minimal runtime payload (`plugin.json`, `skills/`, `agents/`, `roles/`) into `~/.grok/plugins/local/oh-my-grokbuild`.
 - Creates (or refreshes) the user-skill mount at `~/.grok/skills/omgb` so that `/omgb` becomes immediately invocable.
 - Logs everything under `.omc/evidence/install-*.log`.
@@ -74,14 +74,14 @@ Inside the TUI you can also run `/plugins` or `/skills` to force a rescan.
 - `/omgb` not appearing? Check `ls -l ~/.grok/skills/omgb` — the symlinks must point to your clone. Re-run the installer with `--force`.
 - Validator smoke failed? Read the timestamped log; the most common cause is a missing role file or a forbidden top-level directory.
 - Want to develop without re-copying the payload every time? The user-skill mount is a symlink, so edits to `SKILL.md`, role files, and `ROLE-INDEX.md` take effect immediately after a TUI reload.
-- To skip the user-skill mount (advanced): `OMGB_SKIP_USER_SKILL_MOUNT=1 scripts/install-local.sh --force`.
+- To skip the user-skill mount (advanced): `OMGB_SKIP_USER_SKILL_MOUNT=1 scripts/local/install-local.sh --force`.
 
 ### Verification after install
 ```bash
-node scripts/validate.mjs --smoke
-node scripts/validate.mjs --sanity
+node scripts/ci/validate.mjs --smoke
+node scripts/ci/validate.mjs --sanity
 npm test
-scripts/e2e.sh          # requires prior `grok login`
+scripts/local/e2e.sh          # requires prior `grok login`
 ```
 
 See the "Verification" section below for expected success markers.
@@ -110,15 +110,15 @@ grok --resume "omgb-<task-slug>"
 
 ```bash
 npm test                                       # runs smoke and sanity
-scripts/e2e.sh                                 # asserts existing Grok login + payload + launcher dry-run
-node scripts/validate.mjs --audit-run <slug>   # gate before finalization of a run
-node scripts/validate.mjs --audit-all          # bulk-audit every .grok/omgb/runs/<slug>
+scripts/local/e2e.sh                                 # asserts existing Grok login + payload + launcher dry-run
+node scripts/ci/validate.mjs --audit-run <slug>   # gate before finalization of a run
+node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/runs/<slug>
 ```
 
 Optional live headless probe (consumes a real Grok turn):
 
 ```bash
-OMGB_E2E_HEADLESS=1 scripts/e2e.sh
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh
 ```
 
 Expected success markers:
@@ -132,7 +132,7 @@ Expected success markers:
 
 OMGB does not allow the leader to "act as" reviewers. Every role activation
 must be a real Grok subagent invocation with a verbatim worker-output block in
-`evidence.md`. The leader runs `node scripts/validate.mjs --audit-run <slug>`
+`evidence.md`. The leader runs `node scripts/ci/validate.mjs --audit-run <slug>`
 before finalizing; the auditor blocks the run if any active role lacks a
 `## Subagent: <role>` block, if a reviewer cited in `review.md` was not
 actually spawned, or if `spawn_method: unavailable` is claimed without an
@@ -141,9 +141,9 @@ explicit synthesis opt-in.
 Launch a real team:
 
 ```bash
-scripts/launch-omgb-team.sh handoff-fix "Improve resume + subagent support"            # dry-run
-scripts/launch-omgb-team.sh handoff-fix "Improve resume + subagent support" --launch    # actually invokes grok
-scripts/launch-omgb-team.sh perf-audit "Audit hot paths" \
+scripts/local/launch-omgb-team.sh handoff-fix "Improve resume + subagent support"            # dry-run
+scripts/local/launch-omgb-team.sh handoff-fix "Improve resume + subagent support" --launch    # actually invokes grok
+scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" \
   --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch  # slim team
 ```
 
@@ -155,7 +155,7 @@ opt-in synthesis fallback for hosts that genuinely cannot spawn subagents.
 After installing (or when `/omgb` feels off), run:
 
 ```bash
-scripts/doctor.sh
+scripts/local/doctor.sh
 ```
 
 It checks your Node version, Grok CLI + auth, the user-skill mount, the critical `ROLE-INDEX.md` (post-rename), and recent install logs, then prints clear next steps.
@@ -165,7 +165,7 @@ It checks your Node version, Grok CLI + auth, the user-skill mount, the critical
 Any completed OMGB run can be exported as a single, self-contained markdown file that another agent (Claude Code, oh-my-claudecode, Cursor, Codex, etc.) can consume directly.
 
 ```bash
-scripts/export-omgb-handoff.sh <task-slug>
+scripts/ci/export-omgb-handoff.sh <task-slug>
 ```
 
 For full hybrid-team instructions, recommended folder layouts, and prompt templates for the receiving agent, see:
@@ -175,7 +175,7 @@ For full hybrid-team instructions, recommended folder layouts, and prompt templa
 Example:
 
 ```bash
-scripts/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
+scripts/ci/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
 ```
 
 This produces:

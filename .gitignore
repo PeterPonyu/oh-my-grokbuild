@@ -1,5 +1,31 @@
+# Dependencies / build
 node_modules/
-.DS_Store
 *.log
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OMGB / OMC runtime state (per-machine, never source)
 .omc/
-.grok/omgb/runs/
+.grok/
+!.grok/omgb/runs/.keep
+
+# Local scratch / temp
+scratch/
+tmp/
+.tmp/
+*.tmp
+*.bak
+
+# Python (if anyone drops a venv next to the plugin)
+__pycache__/
+*.pyc
+.venv/
+venv/

@@ -4,7 +4,7 @@
 # Launch an OMGB run as a real Grok subagent team.
 #
 # Usage:
-#   scripts/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
+#   scripts/local/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
 #
 # Defaults to --dry-run: writes the agents JSON and prints the exact Grok
 # command, but does not invoke Grok. Pass --launch to actually start the
@@ -15,7 +15,7 @@
 # slimmer team for a small task.
 #
 # What it does:
-#   - Validates the source repo via scripts/validate.mjs --smoke (refuses on failure).
+#   - Validates the source repo via scripts/ci/validate.mjs --smoke (refuses on failure).
 #   - Builds a deterministic agents-config.json from agents/<role>.md + roles/<role>.toml.
 #   - Verifies the JSON parses.
 #   - Writes the JSON into .grok/omgb/runs/<slug>/agents-config.json (idempotent).
@@ -26,12 +26,12 @@ set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
+Usage: scripts/local/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
 
 Examples:
-  scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
-  scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
-  scripts/launch-omgb-team.sh perf-audit "Audit hot paths" --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
+  scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
+  scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+  scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
 USAGE
   exit 1
 fi
@@ -51,7 +51,7 @@ while (($#)); do
   esac
 done
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 RUN_DIR="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
 CONFIG="$RUN_DIR/agents-config.json"
 
@@ -72,7 +72,7 @@ fi
 
 # Preflight: validator smoke must pass.
 echo "[launch] preflight: validator smoke"
-if ! (cd "$ROOT" && node scripts/validate.mjs --smoke >/dev/null); then
+if ! (cd "$ROOT" && node scripts/ci/validate.mjs --smoke >/dev/null); then
   echo "[launch] FAIL: validator smoke failed; refusing to launch" >&2
   exit 1
 fi
@@ -145,5 +145,5 @@ Resume later with:
   grok --resume omgb-$SHORT_SLUG
 
 Audit a completed run with:
-  node scripts/validate.mjs --audit-run $SHORT_SLUG
+  node scripts/ci/validate.mjs --audit-run $SHORT_SLUG
 NEXT

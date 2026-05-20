@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # OMGB Doctor — quick health check for the installed omgb plugin and Grok environment.
 #
-# Run this after `scripts/install-local.sh --force` or when `/omgb` is not behaving.
+# Run this after `scripts/local/install-local.sh --force` or when `/omgb` is not behaving.
 # It is intentionally dependency-light (only uses what the install script already assumes).
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GREEN="\033[32m"
 RED="\033[31m"
 YELLOW="\033[33m"
@@ -62,7 +62,7 @@ if [[ -L "$USER_SKILL/SKILL.md" ]]; then
 elif [[ -e "$USER_SKILL" ]]; then
   warn "Something exists at $USER_SKILL but it is not the expected symlink from install-local.sh"
 else
-  fail "No user skill mount at $USER_SKILL — run scripts/install-local.sh --force"
+  fail "No user skill mount at $USER_SKILL — run scripts/local/install-local.sh --force"
 fi
 
 # 5. ROLE-INDEX.md (the critical file after the rename)
@@ -89,7 +89,7 @@ fi
 
 # 5c. Launcher dry-run — write and validate a 16-role agents JSON.
 LAUNCH_DRY_DIR="$ROOT/.grok/omgb/runs/doctor-probe"
-if bash "$ROOT/scripts/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
+if bash "$ROOT/scripts/local/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
   if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$LAUNCH_DRY_DIR/agents-config.json" 2>/dev/null; then
     pass "launch-omgb-team.sh dry-run produced a valid 16-role agents JSON"
   else
@@ -125,11 +125,11 @@ if [[ -L "$USER_SKILL/SKILL.md" && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; the
   echo -e "${GREEN}Looks good. Reload the Grok TUI (or run /plugins + /skills), then try /omgb inside the TUI.${RESET}"
   echo
   echo "Next commands you probably want:"
-  echo "  node scripts/validate.mjs --smoke"
+  echo "  node scripts/ci/validate.mjs --smoke"
   echo "  npm test"
-  echo "  scripts/e2e.sh"
-  echo "  scripts/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
+  echo "  scripts/local/e2e.sh"
+  echo "  scripts/ci/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
   echo "  cat docs/WORKING-WITH-OTHER-AGENTS.md           # hybrid team guide"
 else
-  echo -e "${RED}Problems detected above. Re-run 'scripts/install-local.sh --force' and then re-run this doctor.${RESET}"
+  echo -e "${RED}Problems detected above. Re-run 'scripts/local/install-local.sh --force' and then re-run this doctor.${RESET}"
 fi

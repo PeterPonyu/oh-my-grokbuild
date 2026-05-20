@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EVIDENCE_DIR="$ROOT/.omc/evidence"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$EVIDENCE_DIR/e2e-$TIMESTAMP.log"
@@ -93,7 +93,7 @@ main() {
 
   step "local install payload"
   if [[ ! -d "$LOCAL_INSTALL" ]]; then
-    fail "installed payload missing at $LOCAL_INSTALL; run scripts/install-local.sh first"
+    fail "installed payload missing at $LOCAL_INSTALL; run scripts/local/install-local.sh first"
   fi
   for required in \
     "plugin.json" \
@@ -110,7 +110,7 @@ main() {
 
   step "subagent team launcher (dry-run)"
   set +e
-  bash "$ROOT/scripts/launch-omgb-team.sh" e2e-team-probe "e2e team JSON probe" >>"$LOG" 2>&1
+  bash "$ROOT/scripts/local/launch-omgb-team.sh" e2e-team-probe "e2e team JSON probe" >>"$LOG" 2>&1
   LAUNCH_RC=$?
   set -e
   if [[ $LAUNCH_RC -ne 0 ]]; then
@@ -124,7 +124,7 @@ main() {
 
   step "audit existing runs (informational)"
   set +e
-  node "$ROOT/scripts/validate.mjs" --audit-all >>"$LOG" 2>&1
+  node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
   AUDIT_RC=$?
   set -e
   if [[ $AUDIT_RC -eq 0 ]]; then
@@ -140,7 +140,7 @@ main() {
   else
     for required in "SKILL.md" "agents" "roles"; do
       if [[ ! -e "$USER_SKILL/$required" ]]; then
-        fail "grok user-skill mount missing $required at $USER_SKILL; re-run scripts/install-local.sh"
+        fail "grok user-skill mount missing $required at $USER_SKILL; re-run scripts/local/install-local.sh"
       fi
     done
     ok "grok user-skill mount looks healthy at $USER_SKILL"

@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PLUGIN_NAME="oh-my-grokbuild"
 TARGET_ROOT="$HOME/.grok/plugins/local"
 MODE="copy"
@@ -64,7 +64,7 @@ while (($#)); do
       ;;
     -h|--help)
       cat <<'USAGE'
-Usage: scripts/install-local.sh [--target-root PATH] [--name NAME] [--copy|--symlink] [--force]
+Usage: scripts/local/install-local.sh [--target-root PATH] [--name NAME] [--copy|--symlink] [--force]
 USAGE
       exit 0
       ;;
@@ -82,7 +82,7 @@ log "mode:   $MODE"
 
 # Pre-flight validation: validator must pass before we touch the user's grok directory.
 log "running validator smoke check"
-if ! (cd "$ROOT" && node scripts/validate.mjs --smoke >>"$LOG" 2>&1); then
+if ! (cd "$ROOT" && node scripts/ci/validate.mjs --smoke >>"$LOG" 2>&1); then
   fail "validator smoke failed; refusing to install"
 fi
 
@@ -149,8 +149,8 @@ fi
 log "[OMGB] install ok at $TARGET"
 log "next steps:"
 log "  1. Reload Grok TUI (or /plugins + /skills) so the new mount is discovered"
-log "  2. Run: ./scripts/doctor.sh          (quick health check)"
-log "  3. Run: npm test && scripts/e2e.sh   (full verification)"
+log "  2. Run: ./scripts/local/doctor.sh          (quick health check)"
+log "  3. Run: npm test && scripts/local/e2e.sh   (full verification)"
 log "  4. Inside Grok: /omgb <your task>"
-log "  5. After a run: ./scripts/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
+log "  5. After a run: ./scripts/ci/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
 log "  6. See docs/WORKING-WITH-OTHER-AGENTS.md for hybrid team instructions"
