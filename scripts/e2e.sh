@@ -99,7 +99,7 @@ main() {
     "plugin.json" \
     ".claude-plugin/plugin.json" \
     "skills/omgb/SKILL.md" \
-    "agents/AGENTS.md" \
+    "agents/ROLE-INDEX.md" \
     "roles/leader.toml"
   do
     if [[ ! -e "$LOCAL_INSTALL/$required" ]]; then

@@ -177,7 +177,7 @@ function runSmoke() {
   assertExists("plugin.json")
   assertExists(".claude-plugin/plugin.json")
   assertExists("skills/omgb/SKILL.md")
-  assertExists("agents/AGENTS.md")
+  assertExists("agents/ROLE-INDEX.md")
   assertExists("scripts/validate.mjs")
   assertExists("scripts/e2e.sh")
   assertExists("scripts/install-local.sh")
@@ -206,7 +206,7 @@ function runSmoke() {
   }
 
   const agentFiles = readdirSync(path.join(root, "agents"))
-    .filter((entry) => entry.endsWith(".md") && entry !== "AGENTS.md")
+    .filter((entry) => entry.endsWith(".md") && entry !== "ROLE-INDEX.md")
     .sort()
   const expectedAgents = [...requiredRoles].sort().map((role) => `${role}.md`)
   if (agentFiles.length !== expectedAgents.length || agentFiles.some((f, i) => f !== expectedAgents[i])) {
@@ -230,7 +230,7 @@ function runSmoke() {
 
 function runSanity() {
   const skill = readText("skills/omgb/SKILL.md")
-  const indexFile = readText("agents/AGENTS.md")
+  const indexFile = readText("agents/ROLE-INDEX.md")
   const grokDocs = readText("docs/research/grok-build-docs.md")
   const localSurvey = readText("docs/research/local-orchestration-survey.md")
   const prd = readJson("prd.json")
@@ -252,10 +252,10 @@ function runSanity() {
     const agentPath = `agents/${role}.md`
     const rolePath = `roles/${role}.toml`
     if (!indexFile.includes(`\`${agentPath}\``)) {
-      fail(`AGENTS.md index missing agent file reference: ${agentPath}`)
+      fail(`ROLE-INDEX.md missing agent file reference: ${agentPath}`)
     }
     if (!indexFile.includes(`\`${rolePath}\``)) {
-      fail(`AGENTS.md index missing role file reference: ${rolePath}`)
+      fail(`ROLE-INDEX.md missing role file reference: ${rolePath}`)
     }
     if (!skill.includes(`\`${agentPath}\``)) {
       fail(`skill does not reference role file: ${agentPath}`)
@@ -317,7 +317,23 @@ function runSanity() {
   }
 
   if (indexFile.split(/\r?\n/).length > 80) {
-    fail("agents/AGENTS.md index must stay under 80 lines (it should be thin)")
+    fail("agents/ROLE-INDEX.md must stay under 80 lines (it should be thin)")
+  }
+
+  // Subagent launch compatibility check (for --agents JSON usage)
+  for (const role of requiredRoles) {
+    const agentPath = `agents/${role}.md`
+    const rolePath = `roles/${role}.toml`
+
+    const agentText = readText(agentPath)
+    const fmRaw = parseFrontmatter(agentText)
+    if (!fmRaw || !/^name:\s*\S/m.test(fmRaw)) {
+      fail(`${agentPath} is missing required YAML frontmatter 'name:' for --agents usage`)
+    }
+
+    if (!existsSync(path.join(root, rolePath))) {
+      fail(`Missing ${rolePath} required for subagent capability config`)
+    }
   }
 
   for (const source of [

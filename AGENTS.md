@@ -7,7 +7,7 @@ Work from this repository root.
 - Preserve the one-skill contract: only `skills/omgb/SKILL.md` may be a skill.
 - Do not add MCP servers, hooks, daemons, or custom slash command files.
 - Keep `plugin.json` and `.claude-plugin/plugin.json` minimal and conservative until xAI publishes a stable detailed Grok Build plugin manifest policy.
-- Role bodies live in `agents/<role>.md`. Role capability configs live in `roles/<role>.toml`. `agents/AGENTS.md` is only a thin index over those files.
+- Role bodies live in `agents/<role>.md`. Role capability configs live in `roles/<role>.toml`. `agents/ROLE-INDEX.md` is the thin catalog index (intentionally not named AGENTS.md to avoid host auto-injection).
 - Do not add dependencies unless the user explicitly approves.
 
 ## Verification

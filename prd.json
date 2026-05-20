@@ -29,7 +29,7 @@
         "agents/ contains exactly 16 per-role .md files matching the 16 roles in the role catalog and no others.",
         "Every agents/<role>.md has YAML frontmatter with at minimum name, description, prompt_mode, permission_mode, and agents_md keys, plus a model key when applicable.",
         "Every agents/<role>.md body documents purpose, scope, responsibilities, inputs, outputs, constraints, execution process, failure handling, records kept, and interaction with verification or review.",
-        "agents/AGENTS.md is a thin index referencing each per-role file and is under 80 lines."
+        "agents/ROLE-INDEX.md is the thin role catalog index (renamed from AGENTS.md to prevent host auto-injection)."
       ],
       "passes": true
     },

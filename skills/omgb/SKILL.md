@@ -90,7 +90,7 @@ same slug, resume it instead of starting over.
 
 ## Role Catalog
 
-When role detail is needed, load `agents/AGENTS.md` for the index, then read
+When role detail is needed, load `agents/ROLE-INDEX.md` for the index, then read
 the specific role files:
 
 | Role | Agent file | Capability config |

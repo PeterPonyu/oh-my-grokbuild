@@ -28,7 +28,7 @@ plus per-role files that match Grok's own bundled extension layout
 plugin.json                       # root skills-only manifest
 .claude-plugin/plugin.json        # compatibility shim for Claude-style hosts
 skills/omgb/SKILL.md              # the single entry-point skill
-agents/AGENTS.md                  # thin index, one line per role
+agents/ROLE-INDEX.md              # thin index (deliberately not AGENTS.md)
 agents/<role>.md                  # 16 detailed Grok-native agent prompts
 roles/<role>.toml                 # 16 Grok-native capability configs
 scripts/validate.mjs              # smoke + sanity validator
@@ -43,19 +43,48 @@ prd.json                          # task PRD with acceptance criteria
 The 16 roles are: `leader`, `intake-analyst`, `researcher`, `codebase-scout`,
 `planner`, `architect`, `executor`, `debugger`, `test-engineer`, `verifier`,
 `code-reviewer`, `security-reviewer`, `performance-reviewer`, `writer`,
-`git-steward`, `ux-reviewer`. See `agents/AGENTS.md` for the index.
+`git-steward`, `ux-reviewer`. See `agents/ROLE-INDEX.md` for the index.
 
 ## Install
 
-Local install into Grok's plugin directory:
+### Prerequisites
+- Node.js (v18+) — the validator (`scripts/validate.mjs`) is ESM.
+- A working `grok` CLI with an authenticated session (`~/.grok/auth.json` for e2e).
+- The repo cloned locally (this is the source of truth; the TUI loads via symlinks).
+
+### One-command local install
 
 ```bash
 scripts/install-local.sh --force
 ```
 
-This copies the runtime payload to `~/.grok/plugins/local/oh-my-grokbuild`. It
-runs the validator first; it does not require sudo, network access, or any
-package install.
+- Runs `node scripts/validate.mjs --smoke` as a mandatory preflight.
+- Copies the minimal runtime payload (`plugin.json`, `skills/`, `agents/`, `roles/`) into `~/.grok/plugins/local/oh-my-grokbuild`.
+- Creates (or refreshes) the user-skill mount at `~/.grok/skills/omgb` so that `/omgb` becomes immediately invocable.
+- Logs everything under `.omc/evidence/install-*.log`.
+
+**No sudo, no network, no `npm install` on the target machine.**
+
+### Post-install step (required)
+Reload or restart the Grok Build TUI so the extensions scanner picks up the new symlinks under `~/.grok/skills/omgb` and the plugin payload under `~/.grok/plugins/local/`.
+
+Inside the TUI you can also run `/plugins` or `/skills` to force a rescan.
+
+### Troubleshooting
+- `/omgb` not appearing? Check `ls -l ~/.grok/skills/omgb` — the symlinks must point to your clone. Re-run the installer with `--force`.
+- Validator smoke failed? Read the timestamped log; the most common cause is a missing role file or a forbidden top-level directory.
+- Want to develop without re-copying the payload every time? The user-skill mount is a symlink, so edits to `SKILL.md`, role files, and `ROLE-INDEX.md` take effect immediately after a TUI reload.
+- To skip the user-skill mount (advanced): `OMGB_SKIP_USER_SKILL_MOUNT=1 scripts/install-local.sh --force`.
+
+### Verification after install
+```bash
+node scripts/validate.mjs --smoke
+node scripts/validate.mjs --sanity
+npm test
+scripts/e2e.sh          # requires prior `grok login`
+```
+
+See the "Verification" section below for expected success markers.
 
 ## Invocation
 
@@ -95,6 +124,48 @@ Expected success markers:
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
 - `[OMGB] e2e passed`
+
+## Doctor & Troubleshooting
+
+After installing (or when `/omgb` feels off), run:
+
+```bash
+scripts/doctor.sh
+```
+
+It checks your Node version, Grok CLI + auth, the user-skill mount, the critical `ROLE-INDEX.md` (post-rename), and recent install logs, then prints clear next steps.
+
+## Sharing & Handoff (to Claude Code, Cursor, Codex, etc.)
+
+Any completed OMGB run can be exported as a single, self-contained markdown file that another agent (Claude Code, oh-my-claudecode, Cursor, Codex, etc.) can consume directly.
+
+```bash
+scripts/export-omgb-handoff.sh <task-slug>
+```
+
+For full hybrid-team instructions, recommended folder layouts, and prompt templates for the receiving agent, see:
+
+**`docs/WORKING-WITH-OTHER-AGENTS.md`**
+
+Example:
+
+```bash
+scripts/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
+```
+
+This produces:
+
+- `.grok/omgb/runs/<slug>/OMGB-RUN-<slug>-HANDOFF.md`
+- A copy at the repo root for convenience
+
+The handoff file:
+- Contains the mission, final OMGB RESULT, condensed evidence, review verdicts, and continuation advice.
+- Is written in second person ("You are now the leader...") so the receiving agent can pick up seamlessly.
+- Can be dropped into any Claude workspace or referenced from the user's `CLAUDE.md` / `AGENTS.md`:
+
+  > "This task was orchestrated by OMGB in Grok. Also read `OMGB-RUN-omgb-self-audit-agents-md-install-guide-HANDOFF.md` + the sibling `evidence.md` and `tasks.json` for full context and decisions."
+
+The handoff + the five canonical run files give the other agent the same "leader's notebook" the original Grok run used.
 
 ## Persistence
 

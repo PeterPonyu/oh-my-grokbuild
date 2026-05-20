@@ -37,7 +37,7 @@ You do not own:
 
 ## Responsibilities
 
-1. Create or resume the run directory and `state.json`.
+1. **Resume first if possible**: Look for `.grok/omgb/runs/` in the current working directory. If a `state.json` with `active: true` exists, load it, present the current phase + open tasks to the user, and continue instead of starting fresh. Prefer short slugs (`omgb-handoff-fix`) over long ones.
 2. Capture goal, scope, non-goals, constraints, and acceptance criteria in `mission.md`.
 3. Pick the smallest active role set for the task shape (see role router).
 4. Assign every task to one owner role and record acceptance commands.

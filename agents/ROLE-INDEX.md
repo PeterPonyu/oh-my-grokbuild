@@ -1,8 +1,11 @@
-# OMGB Role Catalog
+# OMGB Role Catalog (Internal Index)
 
-This file is a thin index. Each role lives in its own file so it can be loaded,
-inspected, or referenced individually. The orchestration logic lives in the
-single skill at `skills/omgb/SKILL.md`.
+This file is a thin index used only by the omgb skill. It is deliberately
+**not** named AGENTS.md to avoid being auto-loaded by the Grok host's
+`agents_md: true` mechanism into every role's context.
+
+Each role lives in its own `agents/<role>.md`. The orchestration logic lives in
+the single skill at `skills/omgb/SKILL.md`.
 
 ## Layout
 

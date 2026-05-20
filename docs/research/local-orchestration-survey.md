@@ -48,7 +48,7 @@ only and writes fresh artifacts for Grok Build's native layout.
 ## OMGB Design Takeaways
 
 - Make one skill the only user-invocable entry point.
-- Keep role routing in the skill and an `agents/AGENTS.md` index, but put each role body in its own file at `agents/<role>.md` and pair it with `roles/<role>.toml`. This mirrors Grok's native bundle layout.
+- Keep role routing in the skill and an `agents/ROLE-INDEX.md` index (renamed from AGENTS.md to avoid host `agents_md` injection), but put each role body in its own file at `agents/<role>.md` and pair it with `roles/<role>.toml`. This mirrors Grok's native bundle layout.
 - Persist run state in ordinary project files so a later Grok session can resume without hooks.
 - Prefer phase gates over unstructured "keep going" loops.
 - Make verification and review first-class phases with bounded fix loops.
