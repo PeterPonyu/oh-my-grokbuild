@@ -81,3 +81,21 @@ UX review subsection in `review.md`:
 
 - Reports to leader.
 - Writer addresses doc findings.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START ux-reviewer
+<your terse-but-complete reply body here>
+### WORKER END ux-reviewer
+```
+
+Rules:
+
+- Use your exact role name (`ux-reviewer`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

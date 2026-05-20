@@ -84,3 +84,21 @@ Performance review subsection in `review.md`:
 
 - Hand verdict to leader.
 - Findings of `high blocking` enter Fix Loop.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START performance-reviewer
+<your terse-but-complete reply body here>
+### WORKER END performance-reviewer
+```
+
+Rules:
+
+- Use your exact role name (`performance-reviewer`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

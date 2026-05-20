@@ -91,3 +91,21 @@ acceptance criteria, with minimal blast radius and no surprise refactors.
 - Hand to test-engineer when the change appears to pass.
 - Hand to debugger when a test or runtime fails.
 - Never declare a task complete without test-engineer evidence.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START executor
+<your terse-but-complete reply body here>
+### WORKER END executor
+```
+
+Rules:
+
+- Use your exact role name (`executor`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

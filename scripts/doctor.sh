@@ -74,6 +74,31 @@ else
   fail "agents/ROLE-INDEX.md missing under the skill mount"
 fi
 
+# 5b. 16-role subagent symmetry — every agent file has a matching role toml.
+ALL_ROLES=(leader intake-analyst researcher codebase-scout planner architect executor debugger test-engineer verifier code-reviewer security-reviewer performance-reviewer writer git-steward ux-reviewer)
+SYMMETRY_OK=1
+for role in "${ALL_ROLES[@]}"; do
+  if [[ ! -f "$ROOT/agents/$role.md" || ! -f "$ROOT/roles/$role.toml" ]]; then
+    fail "subagent pair missing: agents/$role.md or roles/$role.toml"
+    SYMMETRY_OK=0
+  fi
+done
+if [[ $SYMMETRY_OK -eq 1 ]]; then
+  pass "All 16 agent/role pairs present and launchable as subagents"
+fi
+
+# 5c. Launcher dry-run — write and validate a 16-role agents JSON.
+LAUNCH_DRY_DIR="$ROOT/.grok/omgb/runs/doctor-probe"
+if bash "$ROOT/scripts/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
+  if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$LAUNCH_DRY_DIR/agents-config.json" 2>/dev/null; then
+    pass "launch-omgb-team.sh dry-run produced a valid 16-role agents JSON"
+  else
+    fail "launch-omgb-team.sh produced JSON but it does not contain exactly 16 roles"
+  fi
+else
+  fail "launch-omgb-team.sh dry-run failed (try running it directly to see the error)"
+fi
+
 # 6. Local plugin payload (optional but nice)
 LOCAL_PAYLOAD="$HOME/.grok/plugins/local/oh-my-grokbuild"
 if [[ -d "$LOCAL_PAYLOAD" ]]; then

@@ -109,8 +109,10 @@ grok --resume "omgb-<task-slug>"
 ## Verification
 
 ```bash
-npm test          # runs smoke and sanity
-scripts/e2e.sh    # asserts existing Grok login, validates installed payload
+npm test                                       # runs smoke and sanity
+scripts/e2e.sh                                 # asserts existing Grok login + payload + launcher dry-run
+node scripts/validate.mjs --audit-run <slug>   # gate before finalization of a run
+node scripts/validate.mjs --audit-all          # bulk-audit every .grok/omgb/runs/<slug>
 ```
 
 Optional live headless probe (consumes a real Grok turn):
@@ -124,6 +126,29 @@ Expected success markers:
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
 - `[OMGB] e2e passed`
+- `[OMGB] audit passed` (per run, or `[OMGB] audit passed (synthesis opt-in)` when `OMGB_ALLOW_SYNTHESIS: true` is set in `mission.md`)
+
+## Mandatory Subagent Spawning (v0.2.0+)
+
+OMGB does not allow the leader to "act as" reviewers. Every role activation
+must be a real Grok subagent invocation with a verbatim worker-output block in
+`evidence.md`. The leader runs `node scripts/validate.mjs --audit-run <slug>`
+before finalizing; the auditor blocks the run if any active role lacks a
+`## Subagent: <role>` block, if a reviewer cited in `review.md` was not
+actually spawned, or if `spawn_method: unavailable` is claimed without an
+explicit synthesis opt-in.
+
+Launch a real team:
+
+```bash
+scripts/launch-omgb-team.sh handoff-fix "Improve resume + subagent support"            # dry-run
+scripts/launch-omgb-team.sh handoff-fix "Improve resume + subagent support" --launch    # actually invokes grok
+scripts/launch-omgb-team.sh perf-audit "Audit hot paths" \
+  --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch  # slim team
+```
+
+See `docs/RUNNING-WITH-SUBAGENTS.md` for the full subagent guide, including the
+opt-in synthesis fallback for hosts that genuinely cannot spawn subagents.
 
 ## Doctor & Troubleshooting
 

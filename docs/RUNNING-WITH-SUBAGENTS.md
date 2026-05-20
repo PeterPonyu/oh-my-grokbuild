@@ -1,5 +1,12 @@
 # Running OMGB with Real Parallel Subagents
 
+> **v0.2.0:** real subagent spawning is now mandatory by default. The leader is
+> not allowed to synthesize reviewer verdicts in a single context. See the
+> "Mandatory Subagent Spawning" section in `skills/omgb/SKILL.md` and the
+> Spawning Discipline section in `agents/leader.md`. The auditor at
+> `node scripts/validate.mjs --audit-run <slug>` is the enforcement gate.
+
+
 This document explains how to actually launch an OMGB run where the different roles (leader, codebase-scout, executor, verifier, etc.) run as **real Grok subagents** instead of being simulated in a single context.
 
 This is the execution model the OMGB design was built for.
@@ -84,13 +91,56 @@ The leader will receive reports from the other roles as they complete their assi
 
 ## Helper Script (Recommended)
 
-We provide `scripts/launch-omgb-team.sh` (to be added) that:
+Use `scripts/launch-omgb-team.sh`:
 
-- Takes a short slug
-- Generates a temporary valid `--agents` JSON using all (or a subset of) the 16 roles
-- Starts the named session with good defaults
+```bash
+# Dry-run: write the 16-role agents JSON and print the exact grok command
+scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
 
-Until that script is polished, the JSON pattern above is the reliable way.
+# Actually launch the team (subagents spawn in parallel under grok)
+scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+
+# Smaller team for a focused task
+scripts/launch-omgb-team.sh perf-audit "Audit hot paths" \
+  --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
+```
+
+The launcher:
+
+- Validates the source repo via `scripts/validate.mjs --smoke` before doing anything.
+- Builds the JSON from disk (all 16 roles by default).
+- Verifies the JSON parses before printing or launching.
+- Defaults to dry-run; `--launch` invokes Grok with `-s`, `--cwd`, `-p`, `--agents`.
+
+## Auditing a completed run
+
+After a run finishes, run the audit:
+
+```bash
+node scripts/validate.mjs --audit-run <slug>
+node scripts/validate.mjs --audit-all
+```
+
+The audit checks that every `state.json.activeRoles` entry has a real
+`## Subagent: <role>` block in `evidence.md`, that reviewers cited in
+`review.md` were actually spawned, and that any `spawn_method: unavailable`
+block is paired with `OMGB_ALLOW_SYNTHESIS: true` in `mission.md` plus a
+`Synthesis Justification:` line. Exit code 1 means the run is blocked from
+finalization until the missing evidence is supplied.
+
+## Synthesis opt-in (single-context fallback)
+
+When the host genuinely does not support subagents, add this line to the run's
+`mission.md`:
+
+```
+OMGB_ALLOW_SYNTHESIS: true
+```
+
+The leader will still emit a `## Subagent: <role>` block for every activation
+with `spawn_method: unavailable` and a `Synthesis Justification:` line. The
+auditor will label the run as `(synthesis opt-in)` rather than passing it as a
+real-spawn run. This is honest, non-default, and traceable.
 
 ## Important Notes
 

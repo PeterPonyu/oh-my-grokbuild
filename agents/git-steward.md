@@ -81,3 +81,21 @@ publish, deploy, or destructive actions.
 
 - Reports to leader.
 - Triggers only when leader confirms the user explicitly asked.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START git-steward
+<your terse-but-complete reply body here>
+### WORKER END git-steward
+```
+
+Rules:
+
+- Use your exact role name (`git-steward`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

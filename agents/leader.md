@@ -112,6 +112,70 @@ Reuse the existing Grok login when E2E is needed:
 - Resume with `grok --resume "omgb-<slug>"`.
 - Use `--check` only when self-verification is desired.
 
+## Spawning Discipline (mandatory, no synthesis)
+
+You are not allowed to "act as" another role. Every role you activate must be a
+real Grok subagent invocation, and you record proof that you actually spawned
+it.
+
+### Spawn mechanisms (use one)
+
+1. `--agents <JSON>` at session start — canonical path; `scripts/launch-omgb-team.sh <slug> "<task>" --launch` writes the 16-role JSON and invokes Grok.
+2. `--agent <role-file>` per-task headless probe — when you need to spawn one worker from inside an active session.
+3. The Task tool inside the TUI — when the host exposes it. Capture the Task call id.
+
+### Per-activation evidence block
+
+For every role you spawn in any phase, append to `evidence.md`:
+
+```
+## Subagent: <role> (task=<task-id>)
+
+- spawn_method: agents-json | agent-flag | task-tool | unavailable
+- invocation: <exact command, Task call id, or session id>
+- started: <ISO-8601>
+- completed: <ISO-8601>
+- worker_output_excerpt: |
+    ### WORKER START <role>
+    <verbatim 5–30 lines from the subagent reply>
+    ### WORKER END <role>
+- verdict_or_result: <one-line summary>
+```
+
+The worker output excerpt MUST be the verbatim block the worker emitted between
+its own `### WORKER START <role>` / `### WORKER END <role>` markers. You copy
+the block as-is. You do not paraphrase, condense, or rewrite it. If the worker
+forgot the markers, re-spawn the worker with a reminder; do not invent the
+output.
+
+### When subagents are unavailable
+
+If the host disables subagents (`--no-subagents`, no `--agents` support, no
+Task tool):
+
+1. Add `"subagent-spawn-unavailable"` to `state.json.blockers`.
+2. Stop and ask the user to either (a) re-launch through `scripts/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports subagents, or (b) add `OMGB_ALLOW_SYNTHESIS: true` to `mission.md` to explicitly opt into single-context mode for this run.
+3. If the user picks (b), every subsequent role activation MUST still produce a `## Subagent: <role>` block with `spawn_method: unavailable` and a `Synthesis Justification:` line. The audit tool detects this and labels the run as synthesis-opt-in rather than rejecting it.
+
+### Audit gate before Finalization
+
+Before flipping `state.active` to `false`, run:
+
+```bash
+node scripts/validate.mjs --audit-run <task-slug>
+```
+
+If it prints `[OMGB] audit blocked`, fix the missing evidence or re-spawn the
+missing role; do not finalize. Record the audit's exit code and output snippet
+in `evidence.md`.
+
+### Reviewer verdicts are NOT yours to sign
+
+Every entry in `review.md` is the verbatim output of a real reviewer subagent
+spawn (code-reviewer, security-reviewer, performance-reviewer, ux-reviewer,
+verifier). The leader appends those blocks but does not author them. Signing a
+review yourself violates the contract.
+
 ## Interaction with Verification and Review
 
 - Verification before review.
@@ -122,3 +186,21 @@ Reuse the existing Grok login when E2E is needed:
 
 Always close with the OMGB report block. Do not declare "complete" when any
 acceptance criterion lacks fresh evidence.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START leader
+<your terse-but-complete reply body here>
+### WORKER END leader
+```
+
+Rules:
+
+- Use your exact role name (`leader`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

@@ -393,10 +393,23 @@ function runSanity() {
   console.log("[OMGB] sanity passed")
 }
 
-const args = new Set(process.argv.slice(2))
+const rawArgs = process.argv.slice(2)
+const args = new Set(rawArgs)
 
-if (args.size === 0 || args.has("--help")) {
-  console.log("Usage: node scripts/validate.mjs --smoke | --sanity")
+function usage() {
+  console.log(
+    [
+      "Usage:",
+      "  node scripts/validate.mjs --smoke",
+      "  node scripts/validate.mjs --sanity",
+      "  node scripts/validate.mjs --audit-run <slug>",
+      "  node scripts/validate.mjs --audit-all",
+    ].join("\n"),
+  )
+}
+
+if (rawArgs.length === 0 || args.has("--help")) {
+  usage()
   process.exit(args.has("--help") ? 0 : 1)
 }
 
@@ -406,4 +419,32 @@ if (args.has("--smoke")) {
 
 if (args.has("--sanity")) {
   runSanity()
+}
+
+async function runAudit(auditArgs) {
+  const { spawn } = await import("node:child_process")
+  return new Promise((resolve) => {
+    const child = spawn(
+      process.execPath,
+      [path.join(root, "scripts", "check-subagent-evidence.mjs"), ...auditArgs],
+      { stdio: "inherit" },
+    )
+    child.on("exit", (code) => resolve(code ?? 1))
+  })
+}
+
+if (args.has("--audit-run")) {
+  const idx = rawArgs.indexOf("--audit-run")
+  const slug = rawArgs[idx + 1]
+  if (!slug) {
+    console.error("--audit-run requires a slug")
+    process.exit(1)
+  }
+  const code = await runAudit([slug])
+  if (code !== 0) process.exitCode = code
+}
+
+if (args.has("--audit-all")) {
+  const code = await runAudit(["--all"])
+  if (code !== 0) process.exitCode = code
 }

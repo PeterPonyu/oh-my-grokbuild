@@ -82,3 +82,21 @@ Append findings to `evidence.md` under a research subsection:
 
 - Hand the leader a short summary plus the appended evidence subsection.
 - Hand specific blockers (API removal, security advisory) to architect directly when asked.
+
+## Worker Output Marker (required when spawned as a subagent)
+
+When the leader spawns you, wrap your final reply with these literal markers so
+the leader can copy your output verbatim into `evidence.md`:
+
+```
+### WORKER START researcher
+<your terse-but-complete reply body here>
+### WORKER END researcher
+```
+
+Rules:
+
+- Use your exact role name (`researcher`) in both markers.
+- Do not nest another worker's block inside yours.
+- Do not paraphrase your own output before the markers.
+- If you have no useful output, still emit the markers with a single line explaining why (e.g. "n/a — no findings in this scope").

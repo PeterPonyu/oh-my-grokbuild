@@ -108,6 +108,31 @@ main() {
   done
   ok "installed payload looks healthy"
 
+  step "subagent team launcher (dry-run)"
+  set +e
+  bash "$ROOT/scripts/launch-omgb-team.sh" e2e-team-probe "e2e team JSON probe" >>"$LOG" 2>&1
+  LAUNCH_RC=$?
+  set -e
+  if [[ $LAUNCH_RC -ne 0 ]]; then
+    fail "launch-omgb-team.sh dry-run failed with code $LAUNCH_RC"
+  fi
+  PROBE_CFG="$ROOT/.grok/omgb/runs/e2e-team-probe/agents-config.json"
+  if ! node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$PROBE_CFG" >>"$LOG" 2>&1; then
+    fail "launcher produced JSON but it does not contain exactly 16 roles"
+  fi
+  ok "launcher emitted a valid 16-role agents JSON ($PROBE_CFG)"
+
+  step "audit existing runs (informational)"
+  set +e
+  node "$ROOT/scripts/validate.mjs" --audit-all >>"$LOG" 2>&1
+  AUDIT_RC=$?
+  set -e
+  if [[ $AUDIT_RC -eq 0 ]]; then
+    ok "all completed runs pass the subagent-evidence audit"
+  else
+    log "INFO: existing runs do not yet have subagent-spawn evidence (legacy synthesis); see audit findings in $LOG"
+  fi
+
   step "grok user-skill mount"
   USER_SKILL="$HOME/.grok/skills/omgb"
   if [[ "${OMGB_E2E_SKIP_USER_SKILL_MOUNT:-0}" = "1" ]]; then

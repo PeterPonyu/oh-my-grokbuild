@@ -1,117 +1,145 @@
 #!/usr/bin/env bash
 # launch-omgb-team.sh
 #
-# Convenience wrapper to start an OMGB run using real parallel subagents.
+# Launch an OMGB run as a real Grok subagent team.
 #
 # Usage:
-#   scripts/launch-omgb-team.sh <short-slug> "<your task description>"
+#   scripts/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
 #
-# Example:
-#   scripts/launch-omgb-team.sh handoff-fix "fix resume UX and document real subagent usage"
+# Defaults to --dry-run: writes the agents JSON and prints the exact Grok
+# command, but does not invoke Grok. Pass --launch to actually start the
+# session.
 #
-# It will:
-#   - Use the short slug for both the session name (omgb-<slug>) and run directory
-#   - Build a --agents JSON from the available role files
-#   - Start grok with a named session
+# Roles defaults to the full 16-role catalog (from agents/ + roles/ on disk).
+# Override with --roles "leader,executor,test-engineer,..." when you want a
+# slimmer team for a small task.
+#
+# What it does:
+#   - Validates the source repo via scripts/validate.mjs --smoke (refuses on failure).
+#   - Builds a deterministic agents-config.json from agents/<role>.md + roles/<role>.toml.
+#   - Verifies the JSON parses.
+#   - Writes the JSON into .grok/omgb/runs/<slug>/agents-config.json (idempotent).
+#   - Either prints the launch command (dry run) or invokes Grok with -s, --cwd,
+#     -p, and --agents.
 
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <short-slug> \"<task description>\""
-  echo "Example: $0 handoff-fix \"Improve resume and subagent support\""
+  cat <<'USAGE' >&2
+Usage: scripts/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
+
+Examples:
+  scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
+  scripts/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+  scripts/launch-omgb-team.sh perf-audit "Audit hot paths" --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
+USAGE
   exit 1
 fi
 
 SHORT_SLUG="$1"
-shift
-TASK="$*"
+TASK="$2"
+shift 2
+
+LAUNCH=0
+ROLES_CSV=""
+while (($#)); do
+  case "$1" in
+    --launch)  LAUNCH=1; shift ;;
+    --roles)   [[ $# -ge 2 ]] || { echo "--roles requires csv" >&2; exit 1; }; ROLES_CSV="$2"; shift 2 ;;
+    -h|--help) "$0"; exit 0 ;;
+    *) echo "unrecognized arg: $1" >&2; exit 1 ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUN_DIR="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
+CONFIG="$RUN_DIR/agents-config.json"
+
+# All 16 roles, source of truth = disk
+ALL_ROLES=(leader intake-analyst researcher codebase-scout planner architect executor debugger test-engineer verifier code-reviewer security-reviewer performance-reviewer writer git-steward ux-reviewer)
+
+# Read-only set; everyone else gets permission_mode=default
+declare -A READONLY
+for r in intake-analyst researcher codebase-scout planner architect verifier code-reviewer security-reviewer performance-reviewer ux-reviewer; do
+  READONLY[$r]=1
+done
+
+if [[ -n "$ROLES_CSV" ]]; then
+  IFS=',' read -ra SELECTED <<< "$ROLES_CSV"
+else
+  SELECTED=("${ALL_ROLES[@]}")
+fi
+
+# Preflight: validator smoke must pass.
+echo "[launch] preflight: validator smoke"
+if ! (cd "$ROOT" && node scripts/validate.mjs --smoke >/dev/null); then
+  echo "[launch] FAIL: validator smoke failed; refusing to launch" >&2
+  exit 1
+fi
 
 mkdir -p "$RUN_DIR"
 
-# Build a minimal but useful agents JSON (leader + core roles)
-# You can edit this or make it more complete later.
-AGENTS_JSON=$(cat <<'JSON'
+# Build agents JSON
 {
-  "leader": {
-    "name": "leader",
-    "prompt_file": "agents/leader.md",
-    "role": "roles/leader.toml",
-    "permission_mode": "default"
-  },
-  "intake-analyst": {
-    "name": "intake-analyst",
-    "prompt_file": "agents/intake-analyst.md",
-    "role": "roles/intake-analyst.toml",
-    "permission_mode": "read-only"
-  },
-  "codebase-scout": {
-    "name": "codebase-scout",
-    "prompt_file": "agents/codebase-scout.md",
-    "role": "roles/codebase-scout.toml",
-    "permission_mode": "read-only"
-  },
-  "planner": {
-    "name": "planner",
-    "prompt_file": "agents/planner.md",
-    "role": "roles/planner.toml",
-    "permission_mode": "read-only"
-  },
-  "executor": {
-    "name": "executor",
-    "prompt_file": "agents/executor.md",
-    "role": "roles/executor.toml",
-    "permission_mode": "default"
-  },
-  "test-engineer": {
-    "name": "test-engineer",
-    "prompt_file": "agents/test-engineer.md",
-    "role": "roles/test-engineer.toml",
-    "permission_mode": "default"
-  },
-  "verifier": {
-    "name": "verifier",
-    "prompt_file": "agents/verifier.md",
-    "role": "roles/verifier.toml",
-    "permission_mode": "read-only"
-  },
-  "code-reviewer": {
-    "name": "code-reviewer",
-    "prompt_file": "agents/code-reviewer.md",
-    "role": "roles/code-reviewer.toml",
-    "permission_mode": "read-only"
-  }
-}
-JSON
-)
+  echo "{"
+  first=1
+  for role in "${SELECTED[@]}"; do
+    if [[ ! -f "$ROOT/agents/$role.md" ]]; then
+      echo "[launch] FAIL: missing agents/$role.md" >&2
+      exit 1
+    fi
+    if [[ ! -f "$ROOT/roles/$role.toml" ]]; then
+      echo "[launch] FAIL: missing roles/$role.toml" >&2
+      exit 1
+    fi
+    mode="default"
+    if [[ -n "${READONLY[$role]:-}" ]]; then
+      mode="read-only"
+    fi
+    [[ $first -eq 1 ]] || echo "  ,"
+    first=0
+    printf '  "%s": {\n' "$role"
+    printf '    "name": "%s",\n' "$role"
+    printf '    "prompt_file": "agents/%s.md",\n' "$role"
+    printf '    "role": "roles/%s.toml",\n' "$role"
+    printf '    "permission_mode": "%s"\n' "$mode"
+    printf '  }'
+  done
+  echo
+  echo "}"
+} > "$CONFIG"
 
-# Write the config into the run dir for reproducibility
-echo "$AGENTS_JSON" > "$RUN_DIR/agents-config.json"
+# JSON validity check (no jq dependency)
+if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$CONFIG"; then
+  echo "[launch] FAIL: generated $CONFIG is not valid JSON" >&2
+  exit 1
+fi
 
-echo "Launching OMGB team with short slug: $SHORT_SLUG"
-echo "Session name will be: omgb-$SHORT_SLUG"
-echo "Task: $TASK"
-echo
-echo "Run directory: $RUN_DIR"
-echo "Using agents config: $RUN_DIR/agents-config.json"
-echo
+ROLE_COUNT="${#SELECTED[@]}"
+echo "[launch] wrote $CONFIG ($ROLE_COUNT roles)"
 
-# The actual launch command the user can copy or we execute
-CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$PWD" -p "/omgb $TASK" --agents "@$RUN_DIR/agents-config.json")
+CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$ROOT" -p "/omgb $TASK" --agents "@$CONFIG")
 
-echo "Recommended command (copy and run in a full Grok environment that supports --agents):"
-echo
-echo "${CMD[*]}"
-echo
-echo "Files created for this short-slug run:"
-echo "  $RUN_DIR/agents-config.json"
-echo "  $RUN_DIR/  (ready for .grok/omgb/runs/$SHORT_SLUG/)"
-echo
-echo "You can now do:"
-echo "  grok --resume omgb-$SHORT_SLUG"
-echo "  # or start a fresh short-slug run with the command above"
-echo
-echo "Note: Real parallel subagent execution requires a Grok host that supports --agents."
-echo "In restricted environments the team will fall back to sequential simulation."
+if [[ $LAUNCH -eq 1 ]]; then
+  echo "[launch] invoking grok with $ROLE_COUNT-role subagent team"
+  echo "[launch] command: ${CMD[*]}"
+  exec "${CMD[@]}"
+fi
+
+cat <<NEXT
+[launch] dry-run — Grok was not invoked.
+[launch] run directory: $RUN_DIR
+[launch] agents config: $CONFIG ($ROLE_COUNT roles)
+
+Run this to start the team:
+
+  ${CMD[*]}
+
+Or rerun this script with --launch.
+
+Resume later with:
+  grok --resume omgb-$SHORT_SLUG
+
+Audit a completed run with:
+  node scripts/validate.mjs --audit-run $SHORT_SLUG
+NEXT
