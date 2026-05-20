@@ -9,7 +9,7 @@
         "docs/research/local-orchestration-survey.md records package names and versions for oh-my-claudecode, oh-my-codex, oh-my-openagent, and oh-my-cursor as of 2026-05-20.",
         "docs/research/grok-build-docs.md documents that Grok CLI 0.1.212 supports --agent, --agents JSON, --resume, named -s sessions, plan mode, --check headless self-verification, and built-in subagent spawning."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-002",
@@ -20,7 +20,7 @@
         "skills/omgb/SKILL.md loads role detail by dereferencing per-role files at agents/<role>.md and roles/<role>.toml rather than inlining role bodies.",
         "Top-level plugin.json and .claude-plugin/plugin.json declare only the skills entry and no hooks, mcpServers, commands, or agents keys."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-003",
@@ -31,7 +31,7 @@
         "Every agents/<role>.md body documents purpose, scope, responsibilities, inputs, outputs, constraints, execution process, failure handling, records kept, and interaction with verification or review.",
         "agents/AGENTS.md is a thin index referencing each per-role file and is under 80 lines."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-004",
@@ -42,7 +42,7 @@
         "Read-only roles (intake-analyst, researcher, codebase-scout, planner, architect, verifier, code-reviewer, security-reviewer, performance-reviewer, ux-reviewer) have default_capability_mode read-only.",
         "Mutating roles (leader, executor, debugger, test-engineer, writer, git-steward) have default_capability_mode all."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-005",
@@ -53,7 +53,7 @@
         "Validator rejects any extra SKILL.md, any role missing from agents/ or roles/, any role with malformed frontmatter, any plugin manifest declaring hooks, MCP servers, commands, or agents, and any presence of forbidden hooks/, mcps/, mcp/, or commands/ directories.",
         "npm test exits 0 and runs both --smoke and --sanity."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",
@@ -64,7 +64,7 @@
         "scripts/e2e.sh prints [OMGB] e2e passed only when grok inspect, a headless grok -p reachability probe, and the plugin payload check all succeed.",
         "An E2E run on this machine produces a trace at .omc/evidence/e2e-<timestamp>.log that contains [OMGB] e2e passed."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-007",
@@ -75,7 +75,7 @@
         "Running scripts/install-local.sh on this machine produces no errors and prints an [OMGB] install ok marker.",
         "scripts/install-local.sh does not require sudo, network access, or any package install."
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-008",
@@ -86,7 +86,7 @@
         "The remote main branch contains the v0.1.0 commit and an annotated tag v0.1.0.",
         ".omc/evidence/publish.log records the gh CLI commands and the resulting remote URL."
       ],
-      "passes": false
+      "passes": true
     }
   ]
 }
