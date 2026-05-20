@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.1 — 2026-05-20
+
+Bug fix: `scripts/launch-omgb-team.sh --launch` was invoking grok with
+`--agents "@<config>"`, which Grok 0.1.212 rejects:
+
+```
+Error: --agents: invalid JSON: expected value at line 1 column 1
+```
+
+The `@<file>` shorthand is documentation cargo-culted from other tools and is
+not supported by the current Grok CLI. The launcher now reads the file and
+passes the JSON inline. The dry-run output also prints the inline form so
+copy-paste works.
+
+Verified by a real live run on this machine:
+
+```
+scripts/launch-omgb-team.sh v020-smoke "<task>"        # dry-run
+grok -s omgb-v020-smoke --cwd "$PWD" --agents "$(cat ...agents-config.json)" \
+  --no-memory --no-plan --disable-web-search --max-turns 40 \
+  -p "/omgb <task>"
+```
+
+The leader subagent loaded `/omgb`, read `skills/omgb/SKILL.md`, and produced
+the requested deliverable (`.grok/omgb/runs/v020-smoke/status.md`) listing
+all eight OMGB phase names verbatim.
+
 ## 0.2.0 — 2026-05-20
 
 Mandatory real subagent spawning. Synthesis is now opt-in, not the default.

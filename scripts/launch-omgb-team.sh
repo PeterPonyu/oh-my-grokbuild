@@ -118,11 +118,15 @@ fi
 ROLE_COUNT="${#SELECTED[@]}"
 echo "[launch] wrote $CONFIG ($ROLE_COUNT roles)"
 
-CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$ROOT" -p "/omgb $TASK" --agents "@$CONFIG")
+# Grok 0.1.212's --agents wants inline JSON, not an @<file> reference. Load the
+# file we just wrote and pass it as a single argument.
+AGENTS_INLINE="$(cat "$CONFIG")"
+
+CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$ROOT" -p "/omgb $TASK" --agents "$AGENTS_INLINE")
 
 if [[ $LAUNCH -eq 1 ]]; then
   echo "[launch] invoking grok with $ROLE_COUNT-role subagent team"
-  echo "[launch] command: ${CMD[*]}"
+  echo "[launch] session: omgb-$SHORT_SLUG"
   exec "${CMD[@]}"
 fi
 
@@ -131,9 +135,9 @@ cat <<NEXT
 [launch] run directory: $RUN_DIR
 [launch] agents config: $CONFIG ($ROLE_COUNT roles)
 
-Run this to start the team:
+Run this to start the team (passing JSON inline because Grok 0.1.x rejects @<file>):
 
-  ${CMD[*]}
+  grok -s omgb-$SHORT_SLUG --cwd "$ROOT" -p "/omgb $TASK" --agents "\$(cat $CONFIG)"
 
 Or rerun this script with --launch.
 
