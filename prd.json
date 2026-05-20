@@ -1,0 +1,92 @@
+{
+  "task": "Refactor oh-my-grokbuild into a Grok-native plugin: one entry-point skill that orchestrates a deeply detailed team of per-file roles. Verified locally via npm tests, E2E against an existing Grok login, installed under ~/.grok/plugins/local, and published as a public GitHub repository.",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Research-grounded plugin design with Grok native layout",
+      "acceptanceCriteria": [
+        "docs/research/grok-build-docs.md lists official xAI docs checked and the plugin policy gap, and records that Grok bundled extensions ship roles/<name>.toml plus agents/<name>.md formats.",
+        "docs/research/local-orchestration-survey.md records package names and versions for oh-my-claudecode, oh-my-codex, oh-my-openagent, and oh-my-cursor as of 2026-05-20.",
+        "docs/research/grok-build-docs.md documents that Grok CLI 0.1.212 supports --agent, --agents JSON, --resume, named -s sessions, plan mode, --check headless self-verification, and built-in subagent spawning."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-002",
+      "title": "One-skill orchestration surface",
+      "acceptanceCriteria": [
+        "Exactly one SKILL.md exists under skills/ at skills/omgb/SKILL.md.",
+        "skills/omgb/SKILL.md defines intake, grounding, planning, execution, verification, review, fix loop, finalization phases and a role router.",
+        "skills/omgb/SKILL.md loads role detail by dereferencing per-role files at agents/<role>.md and roles/<role>.toml rather than inlining role bodies.",
+        "Top-level plugin.json and .claude-plugin/plugin.json declare only the skills entry and no hooks, mcpServers, commands, or agents keys."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-003",
+      "title": "Roles split into per-file Grok-native agent prompts",
+      "acceptanceCriteria": [
+        "agents/ contains exactly 16 per-role .md files matching the 16 roles in the role catalog and no others.",
+        "Every agents/<role>.md has YAML frontmatter with at minimum name, description, prompt_mode, permission_mode, and agents_md keys, plus a model key when applicable.",
+        "Every agents/<role>.md body documents purpose, scope, responsibilities, inputs, outputs, constraints, execution process, failure handling, records kept, and interaction with verification or review.",
+        "agents/AGENTS.md is a thin index referencing each per-role file and is under 80 lines."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-004",
+      "title": "Roles also expressed as Grok-native roles/<role>.toml",
+      "acceptanceCriteria": [
+        "roles/ contains exactly 16 .toml files matching the agent set with no extras.",
+        "Every roles/<role>.toml sets description, default_capability_mode, and reasoning_effort with allowed values.",
+        "Read-only roles (intake-analyst, researcher, codebase-scout, planner, architect, verifier, code-reviewer, security-reviewer, performance-reviewer, ux-reviewer) have default_capability_mode read-only.",
+        "Mutating roles (leader, executor, debugger, test-engineer, writer, git-steward) have default_capability_mode all."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-005",
+      "title": "Smoke and sanity validator enforces the new layout",
+      "acceptanceCriteria": [
+        "node scripts/validate.mjs --smoke exits 0 and prints [OMGB] smoke passed.",
+        "node scripts/validate.mjs --sanity exits 0 and prints [OMGB] sanity passed.",
+        "Validator rejects any extra SKILL.md, any role missing from agents/ or roles/, any role with malformed frontmatter, any plugin manifest declaring hooks, MCP servers, commands, or agents, and any presence of forbidden hooks/, mcps/, mcp/, or commands/ directories.",
+        "npm test exits 0 and runs both --smoke and --sanity."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-006",
+      "title": "E2E validation against existing Grok login",
+      "acceptanceCriteria": [
+        "scripts/e2e.sh exists and is executable.",
+        "scripts/e2e.sh asserts ~/.grok/auth.json exists before continuing and refuses to log in for the user.",
+        "scripts/e2e.sh prints [OMGB] e2e passed only when grok inspect, a headless grok -p reachability probe, and the plugin payload check all succeed.",
+        "An E2E run on this machine produces a trace at .omc/evidence/e2e-<timestamp>.log that contains [OMGB] e2e passed."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-007",
+      "title": "Local install into ~/.grok/plugins/local",
+      "acceptanceCriteria": [
+        "scripts/install-local.sh exists, is executable, and copies the minimal runtime payload to ~/.grok/plugins/local/oh-my-grokbuild.",
+        "The installed payload contains plugin.json, .claude-plugin/plugin.json, skills/omgb/SKILL.md, agents/ with 16 role files, and roles/ with 16 role configs.",
+        "Running scripts/install-local.sh on this machine produces no errors and prints an [OMGB] install ok marker.",
+        "scripts/install-local.sh does not require sudo, network access, or any package install."
+      ],
+      "passes": false
+    },
+    {
+      "id": "US-008",
+      "title": "Public GitHub remote with first version published",
+      "acceptanceCriteria": [
+        "The local repository is a git repository with a clean working tree after publish.",
+        "A public GitHub repository PeterPonyu/oh-my-grokbuild exists and is the configured origin.",
+        "The remote main branch contains the v0.1.0 commit and an annotated tag v0.1.0.",
+        ".omc/evidence/publish.log records the gh CLI commands and the resulting remote URL."
+      ],
+      "passes": false
+    }
+  ]
+}

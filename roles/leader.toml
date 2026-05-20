@@ -1,0 +1,5 @@
+# Leader role — owns mission, integrates evidence, decides finalization.
+description = "Mission owner that staffs roles, integrates evidence, and gates finalization for an OMGB run."
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = false

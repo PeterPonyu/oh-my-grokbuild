@@ -1,0 +1,24 @@
+{
+  "name": "oh-my-grokbuild",
+  "version": "0.1.0",
+  "description": "One-skill Grok Build orchestration plugin with persistent role-team workflow guidance.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "smoke": "node scripts/validate.mjs --smoke",
+    "sanity": "node scripts/validate.mjs --sanity",
+    "test": "npm run smoke && npm run sanity"
+  },
+  "keywords": [
+    "grok",
+    "grok-build",
+    "plugin",
+    "skills",
+    "orchestration",
+    "agents"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

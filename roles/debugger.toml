@@ -1,0 +1,5 @@
+# Debugger — owns failures and regressions; full read/write/execute.
+description = "Diagnostic and fix specialist that produces ranked hypotheses, runs falsifying probes, and ships minimal fixes."
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = false

@@ -1,0 +1,5 @@
+# Codebase scout — read-only, maps the local repository.
+description = "Fast, read-only codebase explorer that identifies relevant files, project commands, and likely blast radius."
+default_capability_mode = "read-only"
+reasoning_effort = "medium"
+default_fork_context = true

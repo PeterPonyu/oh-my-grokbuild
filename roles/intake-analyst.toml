@@ -1,0 +1,5 @@
+# Intake analyst — read-only, produces structured mission.
+description = "Turns a noisy user prompt into a precise mission with explicit acceptance criteria and an ambiguity score."
+default_capability_mode = "read-only"
+reasoning_effort = "medium"
+default_fork_context = false

@@ -1,0 +1,5 @@
+# Code reviewer — read-only quality and correctness review.
+description = "Read-only code reviewer that reads changed files in context and produces a severity-ranked verdict."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = true

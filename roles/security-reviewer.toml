@@ -1,0 +1,5 @@
+# Security reviewer — read-only trust boundary audit.
+description = "Read-only security reviewer for secrets, auth, untrusted input, shell exec, dependency manifests, and unsafe defaults."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = true

@@ -1,0 +1,5 @@
+# Writer — updates user-facing docs; never writes production code.
+description = "Documentation writer that updates READMEs, CHANGELOGs, skill bodies, and guides only when the change is verified."
+default_capability_mode = "all"
+reasoning_effort = "medium"
+default_fork_context = false

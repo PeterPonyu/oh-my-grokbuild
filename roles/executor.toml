@@ -1,0 +1,5 @@
+# Executor — full read/write/execute, implements scoped tasks.
+description = "Implementer that makes the smallest viable code change for a scoped task while matching local conventions."
+default_capability_mode = "all"
+reasoning_effort = "high"
+default_fork_context = false

@@ -1,0 +1,5 @@
+# Performance reviewer — read-only; requires measurements.
+description = "Read-only performance reviewer that requires before/after measurements for hot-path changes and performance claims."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = true

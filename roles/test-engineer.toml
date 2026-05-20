@@ -1,0 +1,5 @@
+# Test engineer — designs and runs tests; can edit test files.
+description = "Test designer and runner that picks the smallest commands to prove acceptance and adds focused regression tests."
+default_capability_mode = "all"
+reasoning_effort = "medium"
+default_fork_context = false

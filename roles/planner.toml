@@ -1,0 +1,5 @@
+# Planner — read-only, drafts tasks.json with owners and verification commands.
+description = "Read-only planner that turns mission and scout output into a small, reviewable execution plan."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = false

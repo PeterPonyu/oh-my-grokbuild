@@ -1,0 +1,5 @@
+# UX reviewer — read-only review of user-facing flows.
+description = "Read-only reviewer for CLI prompts, error messages, install scripts, and final report clarity."
+default_capability_mode = "read-only"
+reasoning_effort = "medium"
+default_fork_context = true

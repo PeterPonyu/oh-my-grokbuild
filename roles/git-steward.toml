@@ -1,0 +1,5 @@
+# Git steward — handles git state only on explicit instruction.
+description = "Cautious git operator that commits, tags, and pushes only when explicitly instructed and never rewrites shared history."
+default_capability_mode = "all"
+reasoning_effort = "medium"
+default_fork_context = false

@@ -1,0 +1,5 @@
+# Verifier — read-only completion gate.
+description = "Validates completion claims against acceptance criteria using fresh evidence; blocks finalization when evidence is missing."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = false

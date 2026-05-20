@@ -1,0 +1,5 @@
+# Architect — read-only design reviewer.
+description = "Read-only architect that audits interface boundaries, persistent state, and recovery paths for design quality."
+default_capability_mode = "read-only"
+reasoning_effort = "high"
+default_fork_context = true
