@@ -131,5 +131,20 @@ do
   fi
 done
 
+# Grok auto-discovers user skills at ~/.grok/skills/<name>/. The plugin payload
+# above lives at ~/.grok/plugins/local/<name>/ for a future marketplace flow,
+# but the user-skill mount is what makes /omgb invocable today. Symlink-only
+# so updates to the source repo or the plugin payload propagate immediately.
+USER_SKILL_DIR="$HOME/.grok/skills/omgb"
+if [[ "${OMGB_SKIP_USER_SKILL_MOUNT:-0}" = "1" ]]; then
+  log "skipping user-skill mount at $USER_SKILL_DIR (OMGB_SKIP_USER_SKILL_MOUNT=1)"
+else
+  mkdir -p "$USER_SKILL_DIR"
+  ln -sfn "$ROOT/skills/omgb/SKILL.md" "$USER_SKILL_DIR/SKILL.md"
+  ln -sfn "$ROOT/agents"              "$USER_SKILL_DIR/agents"
+  ln -sfn "$ROOT/roles"               "$USER_SKILL_DIR/roles"
+  log "mounted user skill at $USER_SKILL_DIR"
+fi
+
 log "[OMGB] install ok at $TARGET"
-log "next: reload Grok or re-open the TUI to discover the omgb skill"
+log "next: reload Grok or re-open the TUI to see the omgb skill in /skills"

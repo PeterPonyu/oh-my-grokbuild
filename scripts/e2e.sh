@@ -108,6 +108,29 @@ main() {
   done
   ok "installed payload looks healthy"
 
+  step "grok user-skill mount"
+  USER_SKILL="$HOME/.grok/skills/omgb"
+  if [[ "${OMGB_E2E_SKIP_USER_SKILL_MOUNT:-0}" = "1" ]]; then
+    log "SKIP: user-skill mount check (OMGB_E2E_SKIP_USER_SKILL_MOUNT=1)"
+  else
+    for required in "SKILL.md" "agents" "roles"; do
+      if [[ ! -e "$USER_SKILL/$required" ]]; then
+        fail "grok user-skill mount missing $required at $USER_SKILL; re-run scripts/install-local.sh"
+      fi
+    done
+    ok "grok user-skill mount looks healthy at $USER_SKILL"
+
+    step "grok inspect discovers omgb"
+    set +e
+    "$GROK_BIN" inspect 2>&1 | grep -E "^\s+└\s+omgb\s+user\s*$" >>"$LOG"
+    GREP_RC=$?
+    set -e
+    if [[ $GREP_RC -ne 0 ]]; then
+      fail "grok inspect did not list omgb as a user skill; reload Grok or rerun install"
+    fi
+    ok "grok inspect lists omgb as a user skill"
+  fi
+
   step "headless reachability"
   if [[ "${OMGB_E2E_HEADLESS:-0}" = "1" ]]; then
     # Grok defaults to spawning subagents and may attempt background MCP

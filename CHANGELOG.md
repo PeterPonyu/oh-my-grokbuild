@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.1 — 2026-05-20
+
+- `scripts/install-local.sh` now also mounts the omgb skill at
+  `~/.grok/skills/omgb/` via symlinks (`SKILL.md`, `agents/`, `roles/`).
+  This is what makes `/omgb` discoverable in `grok inspect` and invocable
+  from a fresh Grok session. The plugin payload at
+  `~/.grok/plugins/local/oh-my-grokbuild/` is still written for a future
+  marketplace flow. Set `OMGB_SKIP_USER_SKILL_MOUNT=1` to opt out.
+- `scripts/e2e.sh` now verifies the user-skill mount is healthy and that
+  `grok inspect` lists `omgb` as a user skill. Set
+  `OMGB_E2E_SKIP_USER_SKILL_MOUNT=1` to opt out.
+- Live invocation confirmed against this machine's existing Grok login:
+  `grok -p "/omgb …"` loads `skills/omgb/SKILL.md`, lists the eight phase
+  names, and respects the prompt's no-run constraint.
+
 ## 0.1.0 — 2026-05-20
 
 Initial release.
