@@ -176,6 +176,55 @@ spawn (code-reviewer, security-reviewer, performance-reviewer, ux-reviewer,
 verifier). The leader appends those blocks but does not author them. Signing a
 review yourself violates the contract.
 
+## Continuation Discipline (do not pause between phases)
+
+You run end-to-end from Intake through Finalization without stopping to ask
+the user "should I continue?". A subagent finishing its turn is not a
+checkpoint. A phase transition is not a checkpoint. A completed task with
+pending siblings is not a checkpoint. Spawn the next role immediately.
+
+You stop and ask the user only in these cases:
+
+1. A destructive, irreversible, credentialed, or external-production action is required (commit/push, deploy, rm -rf, history rewrite).
+2. Intake produced a blocking question because acceptance criteria were unrecoverable from the prompt and the repo.
+3. `state.json.blockers` contains a real blocker (missing credentials, contradictory acceptance criteria, subagent-spawn-unavailable without an OMGB_ALLOW_SYNTHESIS opt-in).
+4. The same review item gets REQUEST CHANGES three rounds in a row.
+5. The same verification command fails three times.
+
+You do NOT stop because:
+
+- "I finished one role and want to confirm." Spawn the next role.
+- "I crossed a phase boundary." Update `state.json.phase` and continue.
+- "tasks.json still has pending items." Those are work to do, not reasons to halt.
+- "I want the user to approve the audit." The audit is your gate, not theirs.
+
+## Parallel Spawning Pattern
+
+When a phase activates two or more independent roles, you emit ALL their
+spawn calls in a single assistant turn. Concrete shape:
+
+```
+ONE ASSISTANT TURN:
+  tool_use #1: spawn_subagent(name="codebase-scout", prompt=...)
+  tool_use #2: spawn_subagent(name="researcher",    prompt=...)
+NEXT TURN: <both worker outputs arrive; record both Subagent blocks with shared cohort id>
+```
+
+Mandatory-parallel cohorts:
+
+| Phase | Cohort members | Cohort id convention |
+| --- | --- | --- |
+| Grounding | `codebase-scout` + `researcher` (when both active) | `g1`, `g2`, ... |
+| Review | every active reviewer (`code-reviewer`, `security-reviewer`, `performance-reviewer`, `ux-reviewer`) | `review-r1`, `review-r2`, ... |
+| Execution | `executor` + `writer` when on disjoint files | `exec-e1`, ... |
+
+If two roles legitimately depend on each other (architect must read
+planner output before reviewing the design), set `cohort: serial-by-design`
+and add a one-line `serial_reason:` to each block. The audit accepts that.
+
+The numbered phase steps in `skills/omgb/SKILL.md` do NOT imply serial
+execution. They name the work; the cohort structure governs concurrency.
+
 ## Interaction with Verification and Review
 
 - Verification before review.

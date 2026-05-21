@@ -1,5 +1,76 @@
 # Changelog
 
+## 0.4.0 — 2026-05-21
+
+Fix the two failure modes the `omgb-smoke` run exposed:
+
+1. **The leader serialized everything.** Phase steps in the skill were
+   written as numbered ("1. Spawn X. 2. Spawn Y."), which Grok read as a
+   serial recipe. Independent roles like codebase-scout + researcher ran
+   2–3 minutes apart, one after another.
+2. **The leader stopped between every step to ask the user "should I
+   continue?".** A subagent finishing was being treated as a checkpoint,
+   not a step.
+
+### Changes
+
+- `skills/omgb/SKILL.md` grows two new mandatory sections before the
+  Phase Pipeline:
+  - **Parallel Spawning** — defines the mandatory-parallel cohorts
+    (Grounding: scout + researcher; Review: every active reviewer;
+    Execution: executor + writer when on disjoint files), shows the
+    "one assistant turn with N tool calls" pattern explicitly, and
+    extends the Subagent evidence schema with optional `phase:` and
+    `cohort:` fields.
+  - **No-Stop-Between-Phases** — enumerates the exact five cases when
+    the leader is allowed to stop and ask, and the four common
+    rationalizations that are NOT valid pauses (finished a role,
+    crossed a phase boundary, pending tasks, audit pending).
+- Phase 1 (Grounding) and Phase 5 (Review) in the pipeline are rewritten
+  to require a single-cohort parallel spawn rather than numbered serial
+  steps.
+- `agents/leader.md` gains "Continuation Discipline (do not pause
+  between phases)" and "Parallel Spawning Pattern" sections that mirror
+  the skill rules with concrete tool-call shape examples.
+- `scripts/local/launch-omgb-team.sh` now passes `--permission-mode auto`
+  to grok, so individual ordinary tool calls don't pop confirmation
+  prompts (which was forcing stop-and-ask between every step).
+- `scripts/ci/check-subagent-evidence.mjs` parses the new `phase:` and
+  `cohort:` fields and runs a concurrency check on mandatory-parallel
+  phases:
+  - Roles in the same phase must share a cohort id, OR have
+    `cohort: serial-by-design` plus a `serial_reason:` line.
+  - The `started` timestamps within a shared cohort must be within 60s
+    of each other (otherwise emit a medium-severity finding for
+    "cohort id shared but timestamps imply serial spawn").
+  - Violations are high-severity and block finalization, the same as
+    other audit failures.
+
+### Verified locally
+
+- `npm test` (smoke + sanity) green after the SKILL.md / leader.md /
+  launcher / audit changes.
+- Synthetic fixture in `/tmp/concurrency-smoke.mjs`:
+  - Serial fixture (scout + researcher with different cohort ids,
+    timestamps 4 minutes apart) → audit blocks with
+    `phase=grounding ran serially: codebase-scout@g-scout-only,
+    researcher@g-researcher-only`.
+  - Parallel fixture (same evidence, both blocks share `cohort: g1`,
+    timestamps within 30s) → no concurrency finding.
+- Audit run on the real `omgb-smoke` artifacts continues to block, but
+  on the legitimate pre-existing reasons (unknown spawn_method='spawn'
+  for the planner block; executor and test-engineer activated but not
+  spawned). No regression in the prior audit logic.
+
+### Why this is v0.4.0 and not v0.3.1
+
+This changes the contract that an OMGB run must follow to pass
+`--audit-run`. Previously-passing runs (none exist among the legacy
+runs) that did not record `phase:` / `cohort:` would still pass; runs
+that DO record `phase:` for grounding or review now must share a
+cohort id. That's a soft-breaking contract evolution, hence the minor
+bump.
+
 ## 0.3.0 — 2026-05-20
 
 Scripts regrouped by audience + tightened `.gitignore` + git author corrected.

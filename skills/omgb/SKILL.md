@@ -108,6 +108,93 @@ the block claims `spawn_method: unavailable` without a matching opt-in in
 `mission.md`. The leader records the audit's exit code and output snippet in
 `evidence.md` before advancing to Phase 7.
 
+## Parallel Spawning (mandatory for independent lanes)
+
+OMGB's "team" claim is only honest if independent roles actually run in
+parallel. Serial spawning across an entire pipeline is a contract regression
+that earlier runs (`omgb-smoke`, others) exhibited.
+
+### The rule
+
+When a phase activates two or more roles that do not depend on each other,
+the leader MUST spawn them concurrently. Concrete mechanism: emit all
+`spawn_subagent` (or `Task`) tool calls in a single assistant turn.
+
+```
+PARALLEL (correct)
+  Turn N: <leader emits TWO tool calls in the same message>
+    spawn_subagent(name="codebase-scout", prompt=...)
+    spawn_subagent(name="researcher",    prompt=...)
+  Turn N+1: <both worker replies arrive together; leader records both
+            Subagent blocks under the same cohort id>
+
+SERIAL (forbidden for independent roles)
+  Turn N:   spawn_subagent(name="codebase-scout", ...)
+  Turn N+1: <scout reply arrives>
+  Turn N+2: spawn_subagent(name="researcher", ...)
+  Turn N+3: <researcher reply arrives>
+  → contract violation: scout and researcher were independent, leader serialized them.
+```
+
+### Mandatory-parallel cohorts
+
+| Phase | Roles that MUST share one cohort | Why |
+| --- | --- | --- |
+| Grounding | `codebase-scout` + `researcher` (when both activated) | They read independent sources (local repo vs official docs). No data dependency. |
+| Review | every active reviewer (`code-reviewer`, `security-reviewer`, `performance-reviewer`, `ux-reviewer`) | Reviewers operate on the same changeset independently. |
+| Execution | `executor` + `writer` (when docs follow code) when on disjoint files | Independent file sets. Use serial only when the writer needs the executor's output. |
+
+### Evidence schema additions
+
+Every `## Subagent: <role>` block grows two optional fields:
+
+```
+- phase:   intake | grounding | planning | execution | verification | review | fix-loop | finalization
+- cohort:  <short id, e.g. "g1", "review-r1"> — roles spawned in the SAME assistant turn share an id
+```
+
+The audit (`node scripts/ci/validate.mjs --audit-run <slug>`) reads these.
+For each mandatory-parallel cohort (Grounding, Review) the audit verifies
+that all participating roles share a single cohort id and that their
+`started` timestamps are within 60 seconds of each other. Otherwise it
+emits a high-severity finding: `concurrency-violation: <phase> ran serially`.
+
+When two roles legitimately depend on each other (e.g., architect reads
+planner output before producing its verdict), the leader records `cohort:
+serial-by-design` plus a one-line `serial_reason:` field. The audit accepts
+that.
+
+## No-Stop-Between-Phases (mandatory)
+
+The leader does NOT pause between phases or between role activations to
+ask the user "should I continue?". The OMGB contract is end-to-end
+autonomous up to Finalization.
+
+### Stop only when
+
+The leader stops and asks the user in exactly these cases:
+
+1. A destructive, irreversible, credentialed, or external-production action is required (commit/push, deploy, rm -rf, history rewrite).
+2. The user gave conflicting or missing requirements that the intake-analyst could not resolve (intake's blocking question).
+3. `state.json.blockers` contains a real blocker that needs a human decision (e.g., missing credentials, contradictory acceptance criteria, subagent-spawn-unavailable without synthesis opt-in).
+4. Three review rounds REQUEST CHANGES on the same item.
+5. The same verification command fails three times.
+
+### Never stop because
+
+- A subagent finished its turn and "I should confirm the next step." Spawn the next role immediately.
+- A phase boundary was crossed. Phase transitions are internal bookkeeping, not user checkpoints.
+- The task list still has pending items. Pending items are work to do, not reasons to halt.
+- The audit is about to run. The audit is the gate the leader uses; it is not a user prompt.
+
+### Permission discipline
+
+The launcher passes `--permission-mode auto` so individual read-only and
+scoped-write tool calls do not pop confirmation prompts. The leader still
+honors the "destructive action" rule above; it does not bypass user
+consent for the truly risky operations. `auto` mode means "approve the
+ordinary tool calls, escalate the risky ones."
+
 ## Persistent Run Directory
 
 At the start of a non-trivial run, create or resume:
@@ -226,10 +313,13 @@ Advance when:
 
 ### Phase 1: Grounding and Research
 
-1. Spawn `codebase-scout` to map local files, commands, package manager, tests, and likely edit surfaces.
-2. Spawn `researcher` for current official docs, plugin policy, SDK/API behavior, package versions, or external facts.
-3. Each subagent's verbatim output goes into `evidence.md` inside its `## Subagent: <role>` block.
-4. Mark unsupported or inferred behavior explicitly.
+**Parallel cohort required.** When both `codebase-scout` and `researcher`
+are activated, the leader spawns them in the SAME assistant turn (one
+`cohort` id, two `spawn_subagent` calls in one message).
+
+1. Spawn `codebase-scout` (maps local files, commands, package manager, tests, likely edit surfaces) and `researcher` (current official docs, plugin policy, SDK/API behavior, package versions) **in one parallel cohort**.
+2. Each subagent's verbatim output goes into `evidence.md` inside its `## Subagent: <role>` block with `phase: grounding` and the shared `cohort:` id.
+3. Mark unsupported or inferred behavior explicitly.
 
 Advance when:
 
@@ -283,12 +373,17 @@ Advance when:
 
 ### Phase 5: Review
 
-1. Spawn `code-reviewer` to review quality, correctness, maintainability, and architecture.
-2. Spawn `security-reviewer` when changes touch auth, secrets, untrusted input, shell execution, dependency manifests, network calls, or file paths.
-3. Spawn `performance-reviewer` for performance claims or hot-path changes.
-4. Spawn `ux-reviewer` for changes to CLI prompts, install flows, or final report shape.
-5. Each reviewer's verbatim verdict goes into `review.md`.
-6. Increment `reviewRounds` in `state.json`.
+**Parallel cohort required.** All active reviewers run in one cohort,
+spawned in a single assistant turn. Reviewers operate on the same
+changeset independently and never block each other.
+
+1. In one assistant turn, spawn every applicable reviewer concurrently:
+   - `code-reviewer` (always)
+   - `security-reviewer` (when changes touch auth, secrets, untrusted input, shell execution, dependency manifests, network calls, or file paths)
+   - `performance-reviewer` (for performance claims or hot-path changes)
+   - `ux-reviewer` (for CLI prompts, install flows, or final report shape)
+2. Each reviewer's verbatim verdict goes into `review.md`, and the corresponding `## Subagent: <reviewer>` block in `evidence.md` carries `phase: review` plus the shared `cohort:` id.
+3. Increment `reviewRounds` in `state.json` after the cohort returns.
 
 Verdicts:
 

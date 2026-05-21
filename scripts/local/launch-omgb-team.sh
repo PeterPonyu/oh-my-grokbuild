@@ -122,7 +122,11 @@ echo "[launch] wrote $CONFIG ($ROLE_COUNT roles)"
 # file we just wrote and pass it as a single argument.
 AGENTS_INLINE="$(cat "$CONFIG")"
 
-CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$ROOT" -p "/omgb $TASK" --agents "$AGENTS_INLINE")
+# Permission-mode auto: approve ordinary tool calls; the leader still pauses
+# for genuinely destructive/credentialed actions per its own Continuation
+# Discipline. Without this, Grok pops a confirmation between every step and
+# the leader degrades into stop-and-ask serial mode.
+CMD=(grok -s "omgb-$SHORT_SLUG" --cwd "$ROOT" --permission-mode auto -p "/omgb $TASK" --agents "$AGENTS_INLINE")
 
 if [[ $LAUNCH -eq 1 ]]; then
   echo "[launch] invoking grok with $ROLE_COUNT-role subagent team"

@@ -66,17 +66,88 @@ function findSubagentBlocks(evidenceText) {
 
     const methodMatch = body.match(/^- *spawn_method:\s*([a-z-]+)/m)
     const justifMatch = body.match(/^- *Synthesis Justification:\s*(.+)$/m)
+    const phaseMatch = body.match(/^- *phase:\s*([a-z-]+)/m)
+    const cohortMatch = body.match(/^- *cohort:\s*([A-Za-z0-9_-]+)/m)
+    const serialReasonMatch = body.match(/^- *serial_reason:\s*(.+)$/m)
+    const startedMatch = body.match(/^- *started:\s*(\S+)/m)
     const workerMarker = body.includes(`### WORKER START ${role}`) && body.includes(`### WORKER END ${role}`)
 
     blocks.push({
       role,
       task,
       spawn_method: methodMatch ? methodMatch[1] : null,
+      phase: phaseMatch ? phaseMatch[1] : null,
+      cohort: cohortMatch ? cohortMatch[1] : null,
+      serial_reason: serialReasonMatch ? serialReasonMatch[1].trim() : null,
+      started: startedMatch ? startedMatch[1] : null,
       has_worker_marker: workerMarker,
       has_synthesis_justification: !!justifMatch,
     })
   }
   return blocks
+}
+
+const MANDATORY_PARALLEL_PHASES = {
+  grounding: new Set(["codebase-scout", "researcher"]),
+  review: new Set(["code-reviewer", "security-reviewer", "performance-reviewer", "ux-reviewer"]),
+}
+
+function parseIsoMs(s) {
+  if (!s) return null
+  const t = Date.parse(s)
+  return Number.isNaN(t) ? null : t
+}
+
+function checkConcurrencyFindings(blocks) {
+  const findings = []
+  for (const [phase, expectedSet] of Object.entries(MANDATORY_PARALLEL_PHASES)) {
+    const phaseBlocks = blocks.filter((b) => b.phase === phase && expectedSet.has(b.role))
+    if (phaseBlocks.length < 2) continue
+
+    const cohorts = new Map()
+    for (const b of phaseBlocks) {
+      if (!b.cohort) {
+        findings.push({
+          severity: "high",
+          role: b.role,
+          message: `phase=${phase} requires a 'cohort:' id on '${b.role}' (mandatory-parallel phase)`,
+        })
+        continue
+      }
+      if (!cohorts.has(b.cohort)) cohorts.set(b.cohort, [])
+      cohorts.get(b.cohort).push(b)
+    }
+
+    const sharedCohorts = [...cohorts.values()].filter((arr) => arr.length >= 2)
+    if (sharedCohorts.length === 0) {
+      const allSerialByDesign = phaseBlocks.every(
+        (b) => b.cohort === "serial-by-design" && b.serial_reason,
+      )
+      if (allSerialByDesign) continue
+      findings.push({
+        severity: "high",
+        role: phaseBlocks.map((b) => b.role).join("+"),
+        message: `phase=${phase} ran serially: ${phaseBlocks
+          .map((b) => `${b.role}@${b.cohort || "no-cohort"}`)
+          .join(", ")} (mandatory-parallel phase; emit all spawn_subagent calls in one assistant turn and share a cohort id, or set cohort=serial-by-design with a serial_reason)`,
+      })
+      continue
+    }
+
+    for (const cohortBlocks of sharedCohorts) {
+      const starts = cohortBlocks.map((b) => parseIsoMs(b.started)).filter((t) => t !== null)
+      if (starts.length < 2) continue
+      const spread = Math.max(...starts) - Math.min(...starts)
+      if (spread > 60_000) {
+        findings.push({
+          severity: "medium",
+          role: cohortBlocks.map((b) => b.role).join("+"),
+          message: `phase=${phase} cohort '${cohortBlocks[0].cohort}' started timestamps span ${Math.round(spread / 1000)}s (>60s suggests serial spawn even though cohort id was shared)`,
+        })
+      }
+    }
+  }
+  return findings
 }
 
 function auditRun(slug) {
@@ -112,6 +183,7 @@ function auditRun(slug) {
   }
 
   const findings = []
+  findings.push(...checkConcurrencyFindings(blocks))
 
   for (const role of activeRoles) {
     const roleBlocks = blocksByRole.get(role) || []
