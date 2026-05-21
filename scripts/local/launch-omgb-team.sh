@@ -52,7 +52,13 @@ while (($#)); do
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN_DIR="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
+# Grok writes session artifacts under ~/.grok/omgb/runs/<slug>/. The audit
+# (validate.mjs --audit-run) reads <plugin>/.grok/omgb/runs/<slug>/. We make
+# the home location canonical and the plugin-root path a symlink so both
+# sides see the same files.
+RUN_DIR_HOME="$HOME/.grok/omgb/runs/$SHORT_SLUG"
+RUN_DIR_LINK="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
+RUN_DIR="$RUN_DIR_HOME"
 CONFIG="$RUN_DIR/agents-config.json"
 
 # All 16 roles, source of truth = disk
@@ -77,7 +83,20 @@ if ! (cd "$ROOT" && node scripts/ci/validate.mjs --smoke >/dev/null); then
   exit 1
 fi
 
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR_HOME" "$ROOT/.grok/omgb/runs"
+# Replace any stale dir/file at the plugin-root location with a symlink to
+# the canonical home location. This is what makes the audit
+# (validate.mjs --audit-run) able to find the run on completion.
+if [[ -L "$RUN_DIR_LINK" ]]; then
+  # Already a symlink — refresh it in case it points elsewhere.
+  rm -f "$RUN_DIR_LINK"
+elif [[ -e "$RUN_DIR_LINK" ]]; then
+  echo "[launch] FAIL: $RUN_DIR_LINK exists and is not a symlink; refusing to overwrite" >&2
+  exit 1
+fi
+ln -sfn "$RUN_DIR_HOME" "$RUN_DIR_LINK"
+echo "[launch] canonical run dir: $RUN_DIR_HOME"
+echo "[launch] plugin-root link:  $RUN_DIR_LINK -> $RUN_DIR_HOME"
 
 # Build agents JSON
 {

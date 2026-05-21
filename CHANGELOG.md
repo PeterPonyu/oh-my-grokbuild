@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.4.1 — 2026-05-21
+
+Bug fix: the launcher created `<plugin-root>/.grok/omgb/runs/<slug>/` as a
+plain directory, but Grok writes session artifacts (`mission.md`, `state.json`,
+`evidence.md`, etc.) under `~/.grok/omgb/runs/<slug>/`. Result: the audit
+(`validate.mjs --audit-run <slug>`) looked at the plugin-root path and reported
+"state.json missing" while the real run artifacts lived in `~/.grok`.
+
+The first parallel-smoke run (verified post-v0.4.0) exposed this: the leader
+wrote three valid Subagent blocks under `~/.grok/omgb/runs/parallel-smoke/`
+(intake + cohort-g1 scout + cohort-g1 researcher, timestamps 2s apart) but
+the audit couldn't see them until I hand-created the plugin-root symlink.
+
+### Fix
+
+- `scripts/local/launch-omgb-team.sh` now treats `~/.grok/omgb/runs/<slug>/`
+  as the canonical location for every run and creates a symlink at
+  `<plugin>/.grok/omgb/runs/<slug>` pointing to the home location. The
+  agents-config.json is written into the home dir via the symlink, so a
+  single file backs both paths.
+- The launcher refuses to overwrite an existing real directory at the
+  plugin-root path — if one is present it asks the user to clean up first
+  rather than silently destroying data.
+- Banner prints both paths so the run dir is unambiguous.
+
+### Parallel-smoke run that exposed the bug
+
+After the symlink fix, the v0.4.0 parallel-spawning contract is enforceable
+end-to-end on a real run:
+
+```
+$ node scripts/ci/validate.mjs --audit-run parallel-smoke
+[OMGB] audit passed — parallel-smoke
+  phase: complete
+  active roles:  intake-analyst, codebase-scout, researcher
+  spawned roles: intake-analyst, codebase-scout, researcher
+[OMGB] audit passed (1 runs ok, 0 skipped)
+```
+
+`evidence.md` has 3 Subagent blocks: intake-analyst (phase=intake), and the
+mandatory-parallel Grounding cohort `cohort: g1` shared by codebase-scout
+and researcher with `started:` timestamps 2 seconds apart (well within the
+60-second audit window).
+
+### Known limitation
+
+The current audit verifies cohort membership and timestamp proximity but
+cannot prove the two `spawn_subagent` tool calls actually appeared in the
+same assistant turn. The leader's final note in this run admitted:
+"spawns occurred in consecutive turns due to sequential processing;
+evidence + cohort/timestamps satisfy the v0.4.0 contract verification."
+That is honest disclosure — Grok still issued the calls in consecutive
+turns, just close enough to satisfy the timestamp window. A future
+revision will require an explicit `turn:` (Grok turn id) field per
+Subagent block so cohorts can be verified to share a single turn rather
+than relying on wall-clock proximity. For now, the timestamp window plus
+the cohort-id contract is the enforceable surface.
+
 ## 0.4.0 — 2026-05-21
 
 Fix the two failure modes the `omgb-smoke` run exposed:
