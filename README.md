@@ -160,9 +160,9 @@ explicit synthesis opt-in.
 Launch a real team:
 
 ```bash
-scripts/local/launch-omgb-team.sh handoff-fix "Improve resume + subagent support"            # dry-run
-scripts/local/launch-omgb-team.sh handoff-fix "Improve resume + subagent support" --launch    # actually invokes grok
-scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" \
+scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume + subagent support"            # dry-run
+scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume + subagent support" --launch    # actually invokes grok
+scripts/workflow/launch-omgb-team.sh perf-audit "Audit hot paths" \
   --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch  # slim team
 ```
 
@@ -184,7 +184,7 @@ It checks your Node version, Grok CLI + auth, the user-skill mount, the critical
 Any completed OMGB run can be exported as a single, self-contained markdown file that another agent (Claude Code, oh-my-claudecode, Cursor, Codex, etc.) can consume directly.
 
 ```bash
-scripts/ci/export-omgb-handoff.sh <task-slug>
+scripts/workflow/export-omgb-handoff.sh <task-slug>
 ```
 
 For full hybrid-team instructions, recommended folder layouts, and prompt templates for the receiving agent, see:
@@ -194,7 +194,7 @@ For full hybrid-team instructions, recommended folder layouts, and prompt templa
 Example:
 
 ```bash
-scripts/ci/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
+scripts/workflow/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
 ```
 
 This produces:

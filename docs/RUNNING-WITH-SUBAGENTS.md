@@ -91,17 +91,17 @@ The leader will receive reports from the other roles as they complete their assi
 
 ## Helper Script (Recommended)
 
-Use `scripts/local/launch-omgb-team.sh`:
+Use `scripts/workflow/launch-omgb-team.sh`:
 
 ```bash
 # Dry-run: write the 16-role agents JSON and print the exact grok command
-scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
+scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
 
 # Actually launch the team (subagents spawn in parallel under grok)
-scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
 
 # Smaller team for a focused task
-scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" \
+scripts/workflow/launch-omgb-team.sh perf-audit "Audit hot paths" \
   --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
 ```
 

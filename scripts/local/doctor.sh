@@ -89,7 +89,7 @@ fi
 
 # 5c. Launcher dry-run — write and validate a 16-role agents JSON.
 LAUNCH_DRY_DIR="$ROOT/.grok/omgb/runs/doctor-probe"
-if bash "$ROOT/scripts/local/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
+if bash "$ROOT/scripts/workflow/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
   if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$LAUNCH_DRY_DIR/agents-config.json" 2>/dev/null; then
     pass "launch-omgb-team.sh dry-run produced a valid 16-role agents JSON"
   else
@@ -128,7 +128,7 @@ if [[ -L "$USER_SKILL/SKILL.md" && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; the
   echo "  node scripts/ci/validate.mjs --smoke"
   echo "  npm test"
   echo "  scripts/local/e2e.sh"
-  echo "  scripts/ci/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
+  echo "  scripts/workflow/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
   echo "  cat docs/WORKING-WITH-OTHER-AGENTS.md           # hybrid team guide"
 else
   echo -e "${RED}Problems detected above. Re-run 'scripts/local/install-local.sh --force' and then re-run this doctor.${RESET}"

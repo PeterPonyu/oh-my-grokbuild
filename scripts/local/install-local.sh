@@ -152,5 +152,5 @@ log "  1. Reload Grok TUI (or /plugins + /skills) so the new mount is discovered
 log "  2. Run: ./scripts/local/doctor.sh          (quick health check)"
 log "  3. Run: npm test && scripts/local/e2e.sh   (full verification)"
 log "  4. Inside Grok: /omgb <your task>"
-log "  5. After a run: ./scripts/ci/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
+log "  5. After a run: ./scripts/workflow/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
 log "  6. See docs/WORKING-WITH-OTHER-AGENTS.md for hybrid team instructions"

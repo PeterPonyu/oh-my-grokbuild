@@ -120,7 +120,7 @@ it.
 
 ### Spawn mechanisms (use one)
 
-1. `--agents <JSON>` at session start — canonical path; `scripts/local/launch-omgb-team.sh <slug> "<task>" --launch` writes the 16-role JSON and invokes Grok.
+1. `--agents <JSON>` at session start — canonical path; `scripts/workflow/launch-omgb-team.sh <slug> "<task>" --launch` writes the 16-role JSON and invokes Grok.
 2. `--agent <role-file>` per-task headless probe — when you need to spawn one worker from inside an active session.
 3. The Task tool inside the TUI — when the host exposes it. Capture the Task call id.
 
@@ -180,7 +180,7 @@ If the host disables subagents (`--no-subagents`, no `--agents` support, no
 Task tool):
 
 1. Add `"subagent-spawn-unavailable"` to `state.json.blockers`.
-2. Stop and ask the user to either (a) re-launch through `scripts/local/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports subagents, or (b) add `OMGB_ALLOW_SYNTHESIS: true` to `mission.md` to explicitly opt into single-context mode for this run.
+2. Stop and ask the user to either (a) re-launch through `scripts/workflow/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports subagents, or (b) add `OMGB_ALLOW_SYNTHESIS: true` to `mission.md` to explicitly opt into single-context mode for this run.
 3. If the user picks (b), every subsequent role activation MUST still produce a `## Subagent: <role>` block with `spawn_method: unavailable` and a `Synthesis Justification:` line. The audit tool detects this and labels the run as synthesis-opt-in rather than rejecting it.
 
 ### Audit gate before Finalization

@@ -1,12 +1,79 @@
 # Changelog
 
+## 0.7.1 — 2026-05-21
+
+Scripts reorganization + bash 3.2 (macOS default) compatibility audit.
+Behavior unchanged; layout and portability improved.
+
+### Three-bucket script layout
+
+`scripts/` is now divided by **audience and `~/.grok/` access**:
+
+| Folder | Audience | Touches `~/.grok/`? |
+| --- | --- | --- |
+| `scripts/ci/` | CI runner | no — pure Node, no Grok |
+| `scripts/local/` | User setting up their machine | yes (mount/auth/probe) |
+| `scripts/workflow/` | User driving an OMGB run | yes (writes run artifacts, invokes grok) |
+
+Moves (preserved as git renames):
+
+- `scripts/local/launch-omgb-team.sh` → `scripts/workflow/launch-omgb-team.sh`
+- `scripts/local/launch-omgb-fanout.sh` → `scripts/workflow/launch-omgb-fanout.sh`
+- `scripts/local/launch-omgb-pipeline.sh` → `scripts/workflow/launch-omgb-pipeline.sh`
+- `scripts/ci/export-omgb-handoff.sh` → `scripts/workflow/export-omgb-handoff.sh`
+
+Kept where they were:
+
+- `scripts/ci/validate.mjs`, `scripts/ci/check-subagent-evidence.mjs`
+- `scripts/local/install-local.sh`, `scripts/local/doctor.sh`, `scripts/local/e2e.sh`
+
+Rewrote 23 cross-reference sites: every agent/leader/test-engineer/verifier
+prompt, README, SKILL.md, prd.json, every doc under docs/, both committed
+handoff records, and every script-to-script call.
+
+### Bash 3.2 macOS compatibility
+
+Apple's default `/bin/bash` is 3.2.x; bash 4+ idioms break on a stock
+macOS terminal. Audit caught two:
+
+- `${PIDS[-1]}` (negative array index, bash 4.3+) in
+  `scripts/workflow/launch-omgb-fanout.sh` → replaced with
+  `${PIDS[$((${#PIDS[@]}-1))]}`.
+- `declare -A READONLY` (associative array, bash 4+) in
+  `scripts/workflow/launch-omgb-team.sh` → replaced with a space-padded
+  string and substring test (`[[ "$READONLY_ROLES" == *" $role "* ]]`).
+
+`scripts/README.md` now documents the bash compatibility policy, a
+repo-wide regression `grep`, and a "when to use Node vs Bash" matrix:
+
+| Reach for Node when... | Stay in Bash when... |
+| --- | --- |
+| Parsing/writing/mutating JSON or TOML | Forking processes (`grok &`, `wait`) |
+| Cross-platform behavior must be identical | Calling external CLIs |
+| Logic > ~150 lines or branches deeply | Simple file ops |
+| Non-trivial regex / string manipulation | Quick text munging |
+| Building objects, lists, maps | Glue between tools |
+
+The two existing JSON-touching shell paths (writing `fanout-trace.json`,
+finalizing `state.json`) already shell out to inline `node -e` snippets;
+this policy formalizes that.
+
+### Verified
+
+- `npm test` → smoke + sanity green
+- `node scripts/ci/validate.mjs --audit-all` → existing `fanout-smoke` and
+  `pipeline-test` still pass (no behavior change)
+- All `.sh` scripts pass a clean `grep -rnE` for bash 4+ idioms
+- A live `scripts/workflow/launch-omgb-fanout.sh reorg-smoke ... --launch`
+  call works end-to-end from the new path (verified post-commit).
+
 ## 0.7.0 — 2026-05-21
 
 Multi-phase launcher pipeline + tighter audit + placeholder detection.
 
 ### What shipped
 
-- **`scripts/local/launch-omgb-pipeline.sh`** (new): chains multiple
+- **`scripts/workflow/launch-omgb-pipeline.sh`** (new): chains multiple
   `launch-omgb-fanout.sh` invocations into a single OMGB run spanning
   several phases. Default pipeline is `grounding → review`; override
   with `--phases "csv"`. Each phase forks its own role cohort in
@@ -15,7 +82,7 @@ Multi-phase launcher pipeline + tighter audit + placeholder detection.
   state.json (phases array spans every cohort), one evidence.md
   (Subagent blocks for every spawned role), and one
   fanout-trace.json (cohorts array).
-- **`scripts/local/launch-omgb-fanout.sh --append`**: append-mode
+- **`scripts/workflow/launch-omgb-fanout.sh --append`**: append-mode
   preserves prior mission.md/state.json/tasks.json/review.md and
   pushes the new cohort onto `state.json.phases`,
   `fanout-trace.json.cohorts`, and `evidence.md`. This is what
@@ -44,7 +111,7 @@ Multi-phase launcher pipeline + tighter audit + placeholder detection.
 ### Verified end-to-end on this machine
 
 ```
-$ scripts/local/launch-omgb-pipeline.sh pipeline-test "<task>" --launch
+$ scripts/workflow/launch-omgb-pipeline.sh pipeline-test "<task>" --launch
 [pipeline] phase 0/2: grounding
 [fanout]   forked codebase-scout
 [fanout]   forked researcher
@@ -98,7 +165,7 @@ Grok `events.jsonl` for `spawn_method: task-tool`.
 
 ### Changes
 
-- **`scripts/local/launch-omgb-fanout.sh`** (new): forks parallel grok
+- **`scripts/workflow/launch-omgb-fanout.sh`** (new): forks parallel grok
   subprocesses for a phase cohort. Defaults:
   - `--phase grounding` → codebase-scout + researcher
   - `--phase planning` → planner + architect
@@ -124,7 +191,7 @@ Grok `events.jsonl` for `spawn_method: task-tool`.
 ### Verified on this machine
 
 ```
-$ scripts/local/launch-omgb-fanout.sh fanout-smoke "Map the OMGB plugin layout" --launch
+$ scripts/workflow/launch-omgb-fanout.sh fanout-smoke "Map the OMGB plugin layout" --launch
 [fanout] forking 2 parallel grok subprocesses
 [fanout]   forked codebase-scout pid=91211
 [fanout]   forked researcher pid=91219
@@ -257,7 +324,7 @@ the audit couldn't see them until I hand-created the plugin-root symlink.
 
 ### Fix
 
-- `scripts/local/launch-omgb-team.sh` now treats `~/.grok/omgb/runs/<slug>/`
+- `scripts/workflow/launch-omgb-team.sh` now treats `~/.grok/omgb/runs/<slug>/`
   as the canonical location for every run and creates a symlink at
   `<plugin>/.grok/omgb/runs/<slug>` pointing to the home location. The
   agents-config.json is written into the home dir via the symlink, so a
@@ -332,7 +399,7 @@ Fix the two failure modes the `omgb-smoke` run exposed:
 - `agents/leader.md` gains "Continuation Discipline (do not pause
   between phases)" and "Parallel Spawning Pattern" sections that mirror
   the skill rules with concrete tool-call shape examples.
-- `scripts/local/launch-omgb-team.sh` now passes `--permission-mode auto`
+- `scripts/workflow/launch-omgb-team.sh` now passes `--permission-mode auto`
   to grok, so individual ordinary tool calls don't pop confirmation
   prompts (which was forcing stop-and-ask between every step).
 - `scripts/ci/check-subagent-evidence.mjs` parses the new `phase:` and
@@ -430,12 +497,12 @@ node scripts/ci/validate.mjs --audit-all      -> correctly blocks 5 legacy runs
                                                  (exit 1), skips 4 stubs
 scripts/local/e2e.sh                          -> [OMGB] e2e passed
 scripts/local/doctor.sh                       -> "Looks good", all checks green
-scripts/local/launch-omgb-team.sh dry-test    -> 16-role JSON validated
+scripts/workflow/launch-omgb-team.sh dry-test    -> 16-role JSON validated
 ```
 
 ## 0.2.1 — 2026-05-20
 
-Bug fix: `scripts/local/launch-omgb-team.sh --launch` was invoking grok with
+Bug fix: `scripts/workflow/launch-omgb-team.sh --launch` was invoking grok with
 `--agents "@<config>"`, which Grok 0.1.212 rejects:
 
 ```
@@ -450,7 +517,7 @@ copy-paste works.
 Verified by a real live run on this machine:
 
 ```
-scripts/local/launch-omgb-team.sh v020-smoke "<task>"        # dry-run
+scripts/workflow/launch-omgb-team.sh v020-smoke "<task>"        # dry-run
 grok -s omgb-v020-smoke --cwd "$PWD" --agents "$(cat ...agents-config.json)" \
   --no-memory --no-plan --disable-web-search --max-turns 40 \
   -p "/omgb <task>"
@@ -485,7 +552,7 @@ contract. This release makes the contract enforceable.
   spawn evidence.
 - `scripts/ci/validate.mjs` gains `--audit-run <slug>` and `--audit-all`
   modes that delegate to the auditor and propagate its exit code.
-- `scripts/local/launch-omgb-team.sh` rewritten:
+- `scripts/workflow/launch-omgb-team.sh` rewritten:
   - Builds the agents JSON from all 16 roles on disk (no hardcoded subset).
   - Dry-run by default; `--launch` invokes Grok via `grok -s … --agents @…`.
   - Optional `--roles "csv"` to pick a slimmer team for small tasks.
@@ -508,7 +575,7 @@ Verified locally on this machine:
   scripts/local/e2e.sh                    -> [OMGB] e2e passed (incl. launcher
                                        probe + informational audit-all)
   scripts/local/doctor.sh                 -> "Looks good", all checks green
-  scripts/local/launch-omgb-team.sh ...   -> 16-role JSON written and validated
+  scripts/workflow/launch-omgb-team.sh ...   -> 16-role JSON written and validated
   scripts/ci/validate.mjs --audit-all  -> correctly blocks 5 legacy runs;
                                        skips one with no state.json
 

@@ -4,7 +4,7 @@
 # Launch an OMGB run as a real Grok subagent team.
 #
 # Usage:
-#   scripts/local/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
+#   scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
 #
 # Defaults to --dry-run: writes the agents JSON and prints the exact Grok
 # command, but does not invoke Grok. Pass --launch to actually start the
@@ -26,12 +26,12 @@ set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/local/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
+Usage: scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
 
 Examples:
-  scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
-  scripts/local/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
-  scripts/local/launch-omgb-team.sh perf-audit "Audit hot paths" --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
+  scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
+  scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume and subagent support" --launch
+  scripts/workflow/launch-omgb-team.sh perf-audit "Audit hot paths" --roles "leader,codebase-scout,performance-reviewer,test-engineer,verifier" --launch
 USAGE
   exit 1
 fi
@@ -64,11 +64,9 @@ CONFIG="$RUN_DIR/agents-config.json"
 # All 16 roles, source of truth = disk
 ALL_ROLES=(leader intake-analyst researcher codebase-scout planner architect executor debugger test-engineer verifier code-reviewer security-reviewer performance-reviewer writer git-steward ux-reviewer)
 
-# Read-only set; everyone else gets permission_mode=default
-declare -A READONLY
-for r in intake-analyst researcher codebase-scout planner architect verifier code-reviewer security-reviewer performance-reviewer ux-reviewer; do
-  READONLY[$r]=1
-done
+# Read-only set (bash 3.2-compatible: space-padded string, substring test
+# below). everyone else gets permission_mode=default.
+READONLY_ROLES=" intake-analyst researcher codebase-scout planner architect verifier code-reviewer security-reviewer performance-reviewer ux-reviewer "
 
 if [[ -n "$ROLES_CSV" ]]; then
   IFS=',' read -ra SELECTED <<< "$ROLES_CSV"
@@ -112,7 +110,7 @@ echo "[launch] plugin-root link:  $RUN_DIR_LINK -> $RUN_DIR_HOME"
       exit 1
     fi
     mode="default"
-    if [[ -n "${READONLY[$role]:-}" ]]; then
+    if [[ "$READONLY_ROLES" == *" $role "* ]]; then
       mode="read-only"
     fi
     [[ $first -eq 1 ]] || echo "  ,"

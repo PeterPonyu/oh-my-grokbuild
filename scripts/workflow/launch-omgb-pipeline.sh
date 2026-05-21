@@ -20,7 +20,7 @@
 # array). The audit treats it as a single OMGB run.
 #
 # Usage:
-#   scripts/local/launch-omgb-pipeline.sh <short-slug> "<task description>" \
+#   scripts/workflow/launch-omgb-pipeline.sh <short-slug> "<task description>" \
 #     [--phases "grounding,review"] \
 #     [--max-turns 30] \
 #     [--launch]
@@ -29,12 +29,12 @@ set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/local/launch-omgb-pipeline.sh <short-slug> "<task description>" [--phases "csv"] [--max-turns N] [--launch]
+Usage: scripts/workflow/launch-omgb-pipeline.sh <short-slug> "<task description>" [--phases "csv"] [--max-turns N] [--launch]
 
 Examples:
-  scripts/local/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin"
-  scripts/local/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin" --launch
-  scripts/local/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin" --phases "grounding,planning,review" --launch
+  scripts/workflow/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin"
+  scripts/workflow/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin" --launch
+  scripts/workflow/launch-omgb-pipeline.sh pipeline-demo "Audit OMGB plugin" --phases "grounding,planning,review" --launch
 USAGE
   exit 1
 fi
@@ -64,7 +64,7 @@ if [[ "${#PHASES[@]}" -lt 1 ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-FANOUT="$ROOT/scripts/local/launch-omgb-fanout.sh"
+FANOUT="$ROOT/scripts/workflow/launch-omgb-fanout.sh"
 
 if [[ ! -x "$FANOUT" ]]; then
   echo "[pipeline] FAIL: $FANOUT missing or not executable" >&2

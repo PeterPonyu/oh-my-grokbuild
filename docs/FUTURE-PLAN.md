@@ -20,48 +20,47 @@ Available models:
 
 So "per-role MODEL routing" is **not** applicable today — there is no other
 model to route to. What IS available on the same binary is reasoning-budget
-routing:
+routing via `--effort <low|medium|high|xhigh|max>`. That's the v0.9.0 plan
+below.
 
-- `--effort <low|medium|high|xhigh|max>` (top-level effort level)
-- `--reasoning-effort <EFFORT>` (reasoning-only models)
-
-The v0.8.0 plan below is rewritten to use effort-level routing. Same cost
-/ speed levers, different mechanism. If xAI adds more models later, the
-same `roles/<role>.toml` field surface adds `model:` trivially.
+If xAI adds more models later, the same `roles/<role>.toml` field surface
+adds `model: <id>` trivially. No schema break.
 
 ---
 
-## v0.8.0 — Per-role effort routing  · HIGH ROI · ~1 day
+## v0.7.1 — Script reorganization + bash 3.2 macOS compatibility  · cleanup  · ~30 min
 
-**Why.** Today every `grok --agent <role>` subprocess inherits the default
-effort level. Reviewer-style roles (architect, security-reviewer) benefit
-from `high` or `xhigh`; mapping-style roles (codebase-scout, writer) need
-`low` or `medium`. Cheaper reasoning + faster wall clock for ~half the
-roles in a typical pipeline.
+**Why.** The original `scripts/ci/` mixed CI gates (Node validators) with a
+workflow script (`export-omgb-handoff.sh`). And `scripts/local/` mixed
+install/diagnostic tools with run-driving launchers. Three-bucket model is
+cleaner:
 
-**Changes.**
+| Folder | Audience | Touches `~/.grok/`? |
+| --- | --- | --- |
+| `scripts/ci/` | CI runner | no — pure Node, no Grok |
+| `scripts/local/` | User setting up their machine | yes (mount/auth/probe) |
+| `scripts/workflow/` | User driving an OMGB run | yes (writes run artifacts, invokes grok) |
 
-- `roles/<role>.toml` already has `reasoning_effort` but the launcher
-  ignores it. Honor it:
-  - Plain effort: `effort: low|medium|high|xhigh|max` → passed via `--effort`.
-  - Reasoning effort: `reasoning_effort: low|medium|high` → passed via
-    `--reasoning-effort` if Grok exposes a reasoning model.
-- `scripts/local/launch-omgb-fanout.sh`: read the toml per role; pass the
-  flag(s).
-- `scripts/ci/validate.mjs --sanity`: validate every role toml's
-  effort/reasoning_effort against the allowed sets.
-- Document the role → effort matrix in SKILL.md and AGENT-INSTALL.md.
-- Suggested defaults:
-  - `low`: codebase-scout, writer, git-steward
-  - `medium`: intake-analyst, planner, researcher, executor, test-engineer, ux-reviewer
-  - `high`: architect, debugger, verifier, code-reviewer, security-reviewer, performance-reviewer
-  - `xhigh`/`max`: only on explicit user override
+Bash compatibility: target **bash 3.2 (macOS default) and newer**. Audit
+caught 2 idioms used:
 
-**Add new MODEL routing later.** When xAI ships additional models (e.g.
-a thinking variant or a smaller cheap variant), drop `model: <id>` into
-the same toml and have the launcher pass `--model`. No schema break.
+- `${PIDS[-1]}` (negative array index, bash 4.3+) in fanout.sh
+- `declare -A READONLY` (associative array, bash 4+) in team.sh
 
-## v0.9.0 — Auto-retry on placeholder output  · HIGH ROI · ~4 hours
+Both rewritten without dependencies. Repo-wide grep regression check
+documented in `scripts/README.md`.
+
+**Changes (all shipped together as part of v0.7.1).**
+
+- `git mv scripts/local/launch-omgb-*.sh` → `scripts/workflow/`
+- `git mv scripts/ci/export-omgb-handoff.sh` → `scripts/workflow/`
+- Rewrite 23 reference sites (markdown + scripts).
+- Replace `${PIDS[-1]}` with `${PIDS[$((${#PIDS[@]}-1))]}`.
+- Replace `declare -A READONLY` with space-padded string + substring test.
+- Update `scripts/README.md` with new layout, bash-compat policy, and the
+  "when to use Node vs Bash" matrix.
+
+## v0.8.0 — Auto-retry on placeholder output  · HIGH ROI · ~4 hours
 
 **Why.** Today when a fan-out subprocess returns without emitting the
 `### WORKER START/END <role>` markers, `launch-omgb-fanout.sh` synthesizes
@@ -78,7 +77,7 @@ the placeholder, fork again. Two distinct layers, both needed.
 
 **Changes.**
 
-- `scripts/local/launch-omgb-fanout.sh`:
+- `scripts/workflow/launch-omgb-fanout.sh`:
   - After `wait $pid` per role, scan `$TRACE_TMP/$role.out` for the literal
     `(missing markers — raw output below)`. (Same string the audit looks for.)
   - If found AND `$role.attempt < $MAX_RETRIES`: re-fork the subprocess
@@ -109,6 +108,32 @@ the placeholder, fork again. Two distinct layers, both needed.
 Detection is trivial (string match the placeholder line); re-fork is just
 a second pass through the same loop.
 
+## v0.9.0 — Per-role effort routing  · HIGH ROI · ~1 day
+
+**Why.** Today every `grok --agent <role>` subprocess inherits the default
+effort level. Reviewer-style roles (architect, security-reviewer) benefit
+from `high` or `xhigh`; mapping-style roles (codebase-scout, writer) need
+`low` or `medium`. Cheaper reasoning + faster wall clock for ~half the
+roles in a typical pipeline.
+
+**Changes.**
+
+- `roles/<role>.toml` already has `reasoning_effort` but the launcher
+  ignores it. Honor it:
+  - Plain effort: `effort: low|medium|high|xhigh|max` → passed via `--effort`.
+  - Reasoning effort: `reasoning_effort: low|medium|high` → passed via
+    `--reasoning-effort` if Grok exposes a reasoning model.
+- `scripts/workflow/launch-omgb-fanout.sh`: read the toml per role; pass the
+  flag(s).
+- `scripts/ci/validate.mjs --sanity`: validate every role toml's
+  effort/reasoning_effort against the allowed sets.
+- Document the role → effort matrix in SKILL.md and AGENT-INSTALL.md.
+- Suggested defaults:
+  - `low`: codebase-scout, writer, git-steward
+  - `medium`: intake-analyst, planner, researcher, executor, test-engineer, ux-reviewer
+  - `high`: architect, debugger, verifier, code-reviewer, security-reviewer, performance-reviewer
+  - `xhigh`/`max`: only on explicit user override
+
 ## v0.10.0 — Pipeline resume  · MEDIUM-HIGH ROI · ~1 day
 
 **Why.** A multi-phase `launch-omgb-pipeline.sh` run that fails mid-flight
@@ -119,7 +144,7 @@ mechanical.
 
 **Changes.**
 
-- `scripts/local/launch-omgb-pipeline.sh --resume`: at start, read
+- `scripts/workflow/launch-omgb-pipeline.sh --resume`: at start, read
   `$RUN_DIR/state.json`. Compute `done_phases = state.phases.map(p => p.name)`.
   Iterate the requested `--phases` and skip any that are already in
   `done_phases`. For the first not-done phase, call fanout with `--append`
@@ -137,7 +162,7 @@ the pipeline forks can crystallize ambiguity in a single Grok call.
 
 **Changes.**
 
-- `scripts/local/launch-omgb-pipeline.sh`: new `--intake` flag (default on,
+- `scripts/workflow/launch-omgb-pipeline.sh`: new `--intake` flag (default on,
   opt out with `--no-intake`).
   - Runs one `grok --agent agents/intake-analyst.md` subprocess with a
     template that demands the Mission shape (goal / scope / non-goals /
@@ -181,7 +206,7 @@ Stretch goal.
 
 **Changes.**
 
-- `scripts/local/launch-omgb-fanout.sh`: after extracting the marker block,
+- `scripts/workflow/launch-omgb-fanout.sh`: after extracting the marker block,
   pass it through a small `node` filter that strips a small allow-list of
   slop phrases. Original output stays on disk as `$role.out.raw` for
   inspection.

@@ -30,7 +30,7 @@ A teammate using Claude Code (or similar) can take that folder (or the six files
 The Grok user runs:
 
 ```bash
-scripts/ci/export-omgb-handoff.sh <task-slug>
+scripts/workflow/export-omgb-handoff.sh <task-slug>
 ```
 
 Then zips or tars the entire run directory:

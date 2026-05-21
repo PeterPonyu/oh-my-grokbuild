@@ -23,7 +23,7 @@
 # when a Subagent block declares `spawn_method: launcher-fanout`.
 #
 # Usage:
-#   scripts/local/launch-omgb-fanout.sh <short-slug> "<task description>" \
+#   scripts/workflow/launch-omgb-fanout.sh <short-slug> "<task description>" \
 #     [--phase grounding] \
 #     [--roles "codebase-scout,researcher"] \
 #     [--max-turns 20] \
@@ -40,12 +40,12 @@ set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/local/launch-omgb-fanout.sh <short-slug> "<task description>" [--phase <name>] [--roles "csv"] [--max-turns N] [--launch]
+Usage: scripts/workflow/launch-omgb-fanout.sh <short-slug> "<task description>" [--phase <name>] [--roles "csv"] [--max-turns N] [--launch]
 
 Examples:
-  scripts/local/launch-omgb-fanout.sh fanout-demo "Audit OMGB plugin layout"
-  scripts/local/launch-omgb-fanout.sh fanout-demo "Audit OMGB plugin layout" --launch
-  scripts/local/launch-omgb-fanout.sh review-pass "Review the changeset" --phase review --launch
+  scripts/workflow/launch-omgb-fanout.sh fanout-demo "Audit OMGB plugin layout"
+  scripts/workflow/launch-omgb-fanout.sh fanout-demo "Audit OMGB plugin layout" --launch
+  scripts/workflow/launch-omgb-fanout.sh review-pass "Review the changeset" --phase review --launch
 USAGE
   exit 1
 fi
@@ -345,7 +345,7 @@ for role in "${ROLES[@]}"; do
     echo "$rc" > "$TRACE_TMP/$role.rc"
   ) &
   PIDS+=($!)
-  echo "[fanout]   forked $role pid=${PIDS[-1]}"
+  echo "[fanout]   forked $role pid=${PIDS[$((${#PIDS[@]}-1))]}"
 done
 
 echo "[fanout] waiting for ${#PIDS[@]} subprocesses ..."

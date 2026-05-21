@@ -49,10 +49,10 @@ OMGB run today, use the **launcher-fanout** orchestration mode:
 
 ```bash
 # Single phase cohort (e.g. grounding: scout + researcher in parallel)
-scripts/local/launch-omgb-fanout.sh <slug> "<task>" --launch
+scripts/workflow/launch-omgb-fanout.sh <slug> "<task>" --launch
 
 # Multi-phase pipeline (e.g. grounding then review)
-scripts/local/launch-omgb-pipeline.sh <slug> "<task>" --launch
+scripts/workflow/launch-omgb-pipeline.sh <slug> "<task>" --launch
 ```
 
 The launcher itself acts as the orchestrator and forks N parallel
@@ -88,7 +88,7 @@ That is now a contract violation, not a fallback.
 
 Use one of these mechanisms, in order of preference:
 
-1. **`grok --agents <JSON>` at session start** — the canonical path. The team launcher (`scripts/local/launch-omgb-team.sh`) emits the JSON for all 16 roles from disk. Grok then routes each `Task`-style instruction to the named subagent.
+1. **`grok --agents <JSON>` at session start** — the canonical path. The team launcher (`scripts/workflow/launch-omgb-team.sh`) emits the JSON for all 16 roles from disk. Grok then routes each `Task`-style instruction to the named subagent.
 2. **`grok --agent <role-file>` per-task** — for headless single-role probes from within an active session.
 3. **The Task tool inside the TUI** — when the host exposes it, the leader emits `Task(agent="<role>", prompt="…")` to spawn a worker. Record the Task call id in evidence.
 
@@ -132,7 +132,7 @@ no Task tool), the leader does **not** silently synthesize. Instead:
 
 1. Add a blocker to `state.json.blockers`: `"subagent-spawn-unavailable"`.
 2. Stop and ask the user to either:
-   - Re-launch via `scripts/local/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports `--agents`, or
+   - Re-launch via `scripts/workflow/launch-omgb-team.sh <slug> "<task>" --launch` in an environment that supports `--agents`, or
    - Add `OMGB_ALLOW_SYNTHESIS: true` to `mission.md` to explicitly opt into single-context mode for this run. The synthesis opt-in is recorded for every activated role with `spawn_method: unavailable` plus a `Synthesis Justification:` line so the audit tool can flag it.
 3. Do not mark `state.active=false` until the user resolves the choice.
 
@@ -467,7 +467,7 @@ When invoking Grok from a shell for an OMGB run, prefer a named session with
 the full team JSON:
 
 ```bash
-scripts/local/launch-omgb-team.sh <short-slug> "<task>" --launch
+scripts/workflow/launch-omgb-team.sh <short-slug> "<task>" --launch
 ```
 
 That command writes the agents JSON, runs the validator, and invokes:

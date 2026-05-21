@@ -110,7 +110,7 @@ main() {
 
   step "subagent team launcher (dry-run)"
   set +e
-  bash "$ROOT/scripts/local/launch-omgb-team.sh" e2e-team-probe "e2e team JSON probe" >>"$LOG" 2>&1
+  bash "$ROOT/scripts/workflow/launch-omgb-team.sh" e2e-team-probe "e2e team JSON probe" >>"$LOG" 2>&1
   LAUNCH_RC=$?
   set -e
   if [[ $LAUNCH_RC -ne 0 ]]; then

@@ -74,8 +74,8 @@ Skills (N)
 ## Step 5: start an OMGB run
 
 ```bash
-./scripts/local/launch-omgb-team.sh <short-slug> "<task description>"
-./scripts/local/launch-omgb-team.sh <short-slug> "<task description>" --launch
+./scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>"
+./scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" --launch
 ```
 
 The first form is a dry-run that writes the 16-role agents JSON and prints
@@ -130,7 +130,7 @@ For agents that prefer JSON:
     "npm test",
     "scripts/local/e2e.sh"
   ],
-  "launch_command": "scripts/local/launch-omgb-team.sh <slug> \"<task>\" --launch",
+  "launch_command": "scripts/workflow/launch-omgb-team.sh <slug> \"<task>\" --launch",
   "audit_command": "node scripts/ci/validate.mjs --audit-run <slug>",
   "uninstall_commands": [
     "rm -rf ~/.grok/plugins/local/oh-my-grokbuild",
