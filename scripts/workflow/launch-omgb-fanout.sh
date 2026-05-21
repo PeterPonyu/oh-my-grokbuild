@@ -155,6 +155,7 @@ DRY
   exit 0
 fi
 
+STATE_IO="$ROOT/scripts/lib/state-io.mjs"
 if [[ $APPEND -eq 1 ]]; then
   # Preserve prior mission/state/tasks/review — only add a new cohort.
   if [[ ! -f "$RUN_DIR/state.json" ]]; then
@@ -163,52 +164,10 @@ if [[ $APPEND -eq 1 ]]; then
   fi
   echo "[fanout] append-mode: preserving prior mission.md / state.json / tasks.json / review.md"
 else
-  # Scaffolding so the audit can find the run.
-  cat > "$RUN_DIR/mission.md" <<EOF
-# Mission
-
-## Goal
-$TASK
-
-## Scope
-- Phase: $PHASE
-- Cohort: $COHORT_ID
-- Roles: ${ROLES[*]}
-- Orchestration: launcher-fanout (each role spawned as a parallel grok subprocess)
-
-## Constraints
-- Roles run with --no-memory --no-plan --disable-web-search --no-subagents.
-- Each role replies between literal markers \`### WORKER START <role>\` / \`### WORKER END <role>\`.
-- No further phases beyond $PHASE. This is a bounded fan-out, not a full /omgb run.
-
-## Acceptance Criteria
-- evidence.md contains one \`## Subagent: <role>\` block per role with spawn_method=launcher-fanout, phase=$PHASE, cohort=$COHORT_ID, and the role's worker output verbatim.
-- fanout-trace.json records each subprocess's PID, start, end, exit code.
-- node scripts/ci/validate.mjs --audit-run $SHORT_SLUG exits 0 with \`[OMGB] audit passed\`.
-
-## Ambiguity
-score: low
-EOF
-
-  # state.json scaffold
-  cat > "$RUN_DIR/state.json" <<EOF
-{
-  "mode": "omgb",
-  "active": true,
-  "phase": "$PHASE",
-  "startedAt": "$RUN_STARTED_ISO",
-  "updatedAt": "$RUN_STARTED_ISO",
-  "taskSlug": "$SHORT_SLUG",
-  "activeRoles": [$(printf '"%s",' "${ROLES[@]}" | sed 's/,$//')],
-  "qaCycles": 0,
-  "reviewRounds": 0,
-  "blockers": [],
-  "phases": []
-}
-EOF
-
-  echo '{"tasks": []}' > "$RUN_DIR/tasks.json"
-  echo "# Review log — fan-out cohort only" > "$RUN_DIR/review.md"
+  # state-io.mjs init scaffolds mission.md, state.json, tasks.json, review.md.
+  # All JSON manipulation lives in Node so bash never builds JSON by hand.
+  ROLES_CSV_JOINED="$(printf '%s,' "${ROLES[@]}" | sed 's/,$//')"
+  node "$STATE_IO" init "$SHORT_SLUG" "$TASK" "$PHASE" "$COHORT_ID" "$ROLES_CSV_JOINED" >/dev/null
 fi
 
 # Per-role prompt templates.
@@ -324,9 +283,10 @@ mkdir -p "$TRACE_TMP"
 PIDS=()
 for role in "${ROLES[@]}"; do
   prompt="$(prompt_for_role "$role")"
-  # Subshell records start, runs grok, records end + rc. The & after the
-  # closing brace forks the whole subshell in parallel.
+  # Subshell records pid + start, runs grok, records end + rc. The & after
+  # the closing brace forks the whole subshell in parallel.
   (
+    echo "$BASHPID" > "$TRACE_TMP/$role.pid"
     date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.start"
     set +e
     "$GROK_BIN" \
@@ -355,11 +315,11 @@ done
 echo "[fanout] all subprocesses returned"
 
 RUN_COMPLETED_ISO="$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")"
-PHASE_DURATION_MS="$(node -e "console.log(Date.parse('$RUN_COMPLETED_ISO') - Date.parse('$RUN_STARTED_ISO'))")"
 
-# Compose evidence.md and fanout-trace.json from the per-role files.
+# Compose evidence.md from the per-role files. This is pure markdown
+# templating, so it stays in bash. All JSON (trace + state.json) is
+# delegated to scripts/lib/state-io.mjs immediately below.
 EVIDENCE="$RUN_DIR/evidence.md"
-TRACE="$RUN_DIR/fanout-trace.json"
 
 if [[ $APPEND -eq 1 && -f "$EVIDENCE" ]]; then
   {
@@ -382,59 +342,11 @@ else
   } > "$EVIDENCE"
 fi
 
-# Multi-cohort trace schema: { slug, cohorts: [...] }. In append mode,
-# read the existing trace FIRST (do NOT use shell `>` to capture node's
-# output into the trace path — that truncates the file before node can
-# read it). We capture into a shell variable, then rewrite the file
-# fresh with the spliced content.
-EXISTING_COHORTS="$(node - "$TRACE" <<'EOF'
-const fs = require('fs')
-const fp = process.argv[2]
-let cohorts = []
-if (fs.existsSync(fp)) {
-  try {
-    const existing = JSON.parse(fs.readFileSync(fp, 'utf8'))
-    if (Array.isArray(existing.cohorts)) {
-      cohorts = existing.cohorts
-    } else if (Array.isArray(existing.roles)) {
-      // legacy single-cohort shape — wrap it
-      cohorts = [{
-        phase: existing.phase, cohort: existing.cohort,
-        started: existing.started, completed: existing.completed,
-        duration_ms: existing.duration_ms, roles: existing.roles,
-      }]
-    }
-  } catch {}
-}
-process.stdout.write(JSON.stringify(cohorts))
-EOF
-)"
-
-{
-  echo "{"
-  echo "  \"slug\": \"$SHORT_SLUG\","
-  echo "  \"cohorts\": ["
-  if [[ -n "$EXISTING_COHORTS" && "$EXISTING_COHORTS" != "[]" ]]; then
-    # Strip outer brackets, indent, append comma
-    printf '%s' "$EXISTING_COHORTS" | sed 's/^\[//; s/\]$//; s/^/    /'
-    echo ","
-  fi
-  echo "    {"
-  echo "      \"phase\": \"$PHASE\","
-  echo "      \"cohort\": \"$COHORT_ID\","
-  echo "      \"started\": \"$RUN_STARTED_ISO\","
-  echo "      \"completed\": \"$RUN_COMPLETED_ISO\","
-  echo "      \"duration_ms\": $PHASE_DURATION_MS,"
-  echo "      \"roles\": ["
-} > "$TRACE"
-
-first_role=1
-i=0
 for role in "${ROLES[@]}"; do
   start="$(cat "$TRACE_TMP/$role.start" 2>/dev/null || echo "$RUN_STARTED_ISO")"
   end="$(cat "$TRACE_TMP/$role.end"   2>/dev/null || echo "$RUN_COMPLETED_ISO")"
   rc="$(cat "$TRACE_TMP/$role.rc"     2>/dev/null || echo "?")"
-  pid="${PIDS[$i]}"
+  pid="$(cat "$TRACE_TMP/$role.pid"   2>/dev/null || echo "0")"
   out="$(cat "$TRACE_TMP/$role.out" 2>/dev/null || echo "")"
   duration_ms="$(node -e "console.log(Date.parse('$end') - Date.parse('$start'))")"
   excerpt="$(printf '%s' "$out" | sed -n "/### WORKER START $role/,/### WORKER END $role/p")"
@@ -460,62 +372,20 @@ $(printf '%s' "$out" | head -c 800)
     echo "- verdict_or_result: subprocess exited rc=$rc"
     echo
   } >> "$EVIDENCE"
-
-  [[ $first_role -eq 1 ]] || echo "        ," >> "$TRACE"
-  first_role=0
-  {
-    echo "        {"
-    echo "          \"role\": \"$role\","
-    echo "          \"pid\": $pid,"
-    echo "          \"started\": \"$start\","
-    echo "          \"completed\": \"$end\","
-    echo "          \"duration_ms\": $duration_ms,"
-    echo "          \"exit_code\": \"$rc\""
-    echo "        }"
-  } >> "$TRACE"
-  i=$((i+1))
 done
 
-{
-  echo "      ]"
-  echo "    }"
-  echo "  ]"
-  echo "}"
-} >> "$TRACE"
+# Delegate ALL JSON state to state-io.mjs:
+#   - append-cohort updates fanout-trace.json (cohorts array) + state.json
+#     (phases array, activeRoles, updatedAt) atomically.
+node "$STATE_IO" append-cohort "$SHORT_SLUG" "$PHASE" "$COHORT_ID" \
+  "$RUN_STARTED_ISO" "$RUN_COMPLETED_ISO" "$TRACE_TMP" >/dev/null
 
-# Validate the trace JSON before continuing.
-if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$TRACE"; then
-  echo "[fanout] FAIL: $TRACE is not valid JSON after write" >&2
-  exit 1
+# Single-shot fanout (no --append): mark the run complete via state-io.
+# Append-mode runs leave the run active; the pipeline driver finalizes
+# after the last phase.
+if [[ $APPEND -eq 0 ]]; then
+  node "$STATE_IO" finalize "$SHORT_SLUG" >/dev/null
 fi
-
-# Finalize state.json — append this cohort to the phases array. The
-# pipeline driver decides when to flip `active=false` / `phase=complete`;
-# fanout invocations always leave the run open unless this is a single
-# stand-alone call (no --append).
-node - <<EOF
-const fs = require('fs')
-const p = "$RUN_DIR/state.json"
-const s = JSON.parse(fs.readFileSync(p, 'utf8'))
-s.phases = Array.isArray(s.phases) ? s.phases : []
-s.phases.push({
-  name: "$PHASE",
-  started: "$RUN_STARTED_ISO",
-  completed: "$RUN_COMPLETED_ISO",
-  duration_ms: $PHASE_DURATION_MS,
-})
-const activeRolesAdd = [$(printf '"%s",' "${ROLES[@]}" | sed 's/,$//')]
-const activeSet = new Set(s.activeRoles || [])
-for (const r of activeRolesAdd) activeSet.add(r)
-s.activeRoles = [...activeSet]
-s.updatedAt = "$RUN_COMPLETED_ISO"
-if ($APPEND === 0) {
-  // Single-shot fanout (no --append): mark the run complete.
-  s.active = false
-  s.phase = "complete"
-}
-fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n")
-EOF
 
 # Append a Verdict line to review.md so the audit's "state=complete needs Verdict" check passes.
 cat >> "$RUN_DIR/review.md" <<EOF
@@ -534,7 +404,7 @@ rm -rf "$TRACE_TMP"
 
 echo
 echo "[fanout] wrote $EVIDENCE"
-echo "[fanout] wrote $TRACE"
+echo "[fanout] wrote $RUN_DIR/fanout-trace.json"
 echo "[fanout] state.json marked complete"
 echo
 echo "Audit this run:"

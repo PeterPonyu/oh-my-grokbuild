@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.7.2 — 2026-05-21
+
+State management extracted into a real Node module. JSON files get a
+Node implementation; shell scripts go back to being pure orchestration.
+
+### Why
+
+The scripts/README "when to use Node vs Bash" matrix says JSON belongs in
+Node. The workflow launchers still had three places that built or
+mutated JSON via inline `node - <<EOF` heredocs inside bash:
+
+- `launch-omgb-fanout.sh`: state.json scaffold (writing); fanout-trace.json
+  cohort splice (read existing, append, rewrite); state.json finalize
+  (read, push phases entry, write).
+- `launch-omgb-pipeline.sh`: state.json final-finalize.
+
+That was the worst of both worlds — bash strings building JSON, escaping
+issues, and one bug (`shell > truncated $TRACE before node could read it`,
+fixed in v0.7.0) already proved the brittleness.
+
+### What shipped
+
+- **`scripts/lib/state-io.mjs`** (new). One Node module owns every
+  state.json / fanout-trace.json mutation. CLI ops:
+  - `init <slug> <task> <phase> <cohort> <roles-csv>` — scaffold
+    mission.md (idempotent), state.json (fresh), tasks.json (stub),
+    review.md (stub).
+  - `append-cohort <slug> <phase> <cohort> <started> <completed> <trace-tmp>`
+    — read per-role files (.start/.end/.rc/.pid) from the tmp dir,
+    compose a new cohort entry, push it onto
+    `fanout-trace.json.cohorts`, push a matching phase entry onto
+    `state.json.phases`, refresh activeRoles + updatedAt.
+  - `finalize <slug> [--keep-active]` — mark state.json
+    `active=false, phase=complete`. `--keep-active` preserves active
+    state (used between phases inside a pipeline).
+  - Backward-compat: still reads legacy v0.6.0 single-cohort trace shape.
+  - Every op prints a single JSON object to stdout describing what it did.
+
+- **`scripts/workflow/launch-omgb-fanout.sh`** refactored:
+  - state.json scaffold → `state-io.mjs init ...`
+  - fanout-trace.json cohort append → `state-io.mjs append-cohort ...`
+  - state.json finalize (single-shot mode) → `state-io.mjs finalize ...`
+  - Each subprocess now writes `$BASHPID` to `<role>.pid` inside the
+    tmp dir so state-io picks up the actual fork PID without needing
+    bash to thread an index through.
+  - evidence.md generation stays in bash (markdown templating, no JSON).
+
+- **`scripts/workflow/launch-omgb-pipeline.sh`** refactored:
+  - Final finalize → `state-io.mjs finalize ...`
+  - All fanout calls already delegate through fanout.sh, which now uses
+    state-io. The pipeline driver itself touches zero JSON directly.
+
+### Verified end-to-end
+
+- `npm test` → smoke + sanity green.
+- Live `scripts/workflow/launch-omgb-fanout.sh state-io-refactor ... --launch`
+  → audit passes; state.json + fanout-trace.json round-trip correctly.
+- Live `scripts/workflow/launch-omgb-pipeline.sh state-io-pipeline ... --launch`
+  → 2 phases, 6 roles, all rc=0, both cohorts recorded in trace, phases
+  array in state.json correct, audit passes.
+- `node scripts/ci/validate.mjs --audit-all` reports **5 runs pass, 1
+  skipped**. No regressions on prior fanout/pipeline runs.
+- `grep -nE 'node - <<EOF|node -e ".*JSON\.parse' scripts/workflow/*.sh`
+  returns empty — every JSON mutation in the workflow path now lives in
+  `scripts/lib/state-io.mjs`.
+
+### Why this matters for v0.8.0 (auto-retry)
+
+v0.8.0 changes the trace schema (add an `attempts: [...]` array per role).
+With state-io.mjs in place, that becomes a 10-line addition to one Node
+function instead of a careful audit of three bash heredocs.
+
+### Bug fixed during the refactor
+
+- `[fanout] wrote $TRACE` echo at the end of the launcher referenced a
+  removed shell variable. Replaced with the explicit path.
+
 ## 0.7.1 — 2026-05-21
 
 Scripts reorganization + bash 3.2 (macOS default) compatibility audit.

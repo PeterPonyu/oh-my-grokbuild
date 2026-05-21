@@ -105,20 +105,11 @@ for phase in "${PHASES[@]}"; do
   i=$((i+1))
 done
 
-# Pipeline finalizer: flip state.json to complete (fanout left it active
-# on every --append call so successive phases don't trip the audit's
-# "state=complete needs review.md Verdict" guard mid-pipeline).
-RUN_DIR="$HOME/.grok/omgb/runs/$SHORT_SLUG"
-PIPELINE_COMPLETED_ISO="$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")"
-node - <<EOF
-const fs = require('fs')
-const p = "$RUN_DIR/state.json"
-const s = JSON.parse(fs.readFileSync(p, 'utf8'))
-s.active = false
-s.phase = "complete"
-s.updatedAt = "$PIPELINE_COMPLETED_ISO"
-fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n")
-EOF
+# Pipeline finalizer: flip state.json to complete via state-io.mjs.
+# Fanout left the run active on every --append call so successive phases
+# wouldn't trip the audit's "state=complete needs review.md Verdict" guard
+# mid-pipeline. Now that the last phase has returned, finalize.
+node "$ROOT/scripts/lib/state-io.mjs" finalize "$SHORT_SLUG" >/dev/null
 echo
 echo "[pipeline] run complete. state.json marked phase=complete."
 echo
