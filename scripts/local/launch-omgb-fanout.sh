@@ -58,6 +58,7 @@ PHASE="grounding"
 ROLES_CSV=""
 MAX_TURNS=20
 LAUNCH=0
+APPEND=0
 
 while (($#)); do
   case "$1" in
@@ -65,6 +66,7 @@ while (($#)); do
     --roles)      [[ $# -ge 2 ]] || { echo "--roles requires csv" >&2; exit 1; }; ROLES_CSV="$2"; shift 2 ;;
     --max-turns)  [[ $# -ge 2 ]] || { echo "--max-turns requires N" >&2; exit 1; }; MAX_TURNS="$2"; shift 2 ;;
     --launch)     LAUNCH=1; shift ;;
+    --append)     APPEND=1; shift ;;
     -h|--help)    "$0"; exit 0 ;;
     *)            echo "unrecognized arg: $1" >&2; exit 1 ;;
   esac
@@ -153,8 +155,16 @@ DRY
   exit 0
 fi
 
-# Scaffolding so the audit can find the run.
-cat > "$RUN_DIR/mission.md" <<EOF
+if [[ $APPEND -eq 1 ]]; then
+  # Preserve prior mission/state/tasks/review — only add a new cohort.
+  if [[ ! -f "$RUN_DIR/state.json" ]]; then
+    echo "[fanout] FAIL: --append given but $RUN_DIR/state.json does not exist" >&2
+    exit 1
+  fi
+  echo "[fanout] append-mode: preserving prior mission.md / state.json / tasks.json / review.md"
+else
+  # Scaffolding so the audit can find the run.
+  cat > "$RUN_DIR/mission.md" <<EOF
 # Mission
 
 ## Goal
@@ -180,8 +190,8 @@ $TASK
 score: low
 EOF
 
-# state.json scaffold
-cat > "$RUN_DIR/state.json" <<EOF
+  # state.json scaffold
+  cat > "$RUN_DIR/state.json" <<EOF
 {
   "mode": "omgb",
   "active": true,
@@ -197,8 +207,9 @@ cat > "$RUN_DIR/state.json" <<EOF
 }
 EOF
 
-echo '{"tasks": []}' > "$RUN_DIR/tasks.json"
-echo "# Review log — fan-out cohort only" > "$RUN_DIR/review.md"
+  echo '{"tasks": []}' > "$RUN_DIR/tasks.json"
+  echo "# Review log — fan-out cohort only" > "$RUN_DIR/review.md"
+fi
 
 # Per-role prompt templates.
 prompt_for_role() {
@@ -244,10 +255,13 @@ You are planner. Phase 2 Planning of OMGB run "$SHORT_SLUG".
 
 Task: $TASK
 
-Produce a small, reviewable tasks.json shape inside your worker block — array of {id, title, ownerRole, acceptance, verification}.
+STRICT OUTPUT PROTOCOL:
+- Use AT MOST 2 tool calls. Prefer 0.
+- After tools (or immediately), emit your FINAL message and stop.
+- That final message MUST be EXACTLY the marker block below — no prose before or after.
 
 ### WORKER START planner
-<your tasks.json content as JSON>
+<your tasks.json content as JSON: array of {id, title, ownerRole, acceptance, verification}>
 ### WORKER END planner
 EOP
       ;;
@@ -257,10 +271,13 @@ You are architect. Phase 2 Planning of OMGB run "$SHORT_SLUG".
 
 Task: $TASK
 
-Verdict on interface boundaries, persistent state ownership, recovery paths. Concise.
+STRICT OUTPUT PROTOCOL:
+- Use AT MOST 2 tool calls. Prefer 0.
+- After tools (or immediately), emit your FINAL message and stop.
+- That final message MUST be EXACTLY the marker block below — no prose before or after.
 
 ### WORKER START architect
-<APPROVE | COMMENT | REQUEST CHANGES + bullets of findings>
+<APPROVE | COMMENT | REQUEST CHANGES, then 3-5 bullets on interface boundaries, persistent state ownership, recovery paths>
 ### WORKER END architect
 EOP
       ;;
@@ -270,10 +287,15 @@ You are $role. Phase 5 Review of OMGB run "$SHORT_SLUG".
 
 Task: $TASK
 
-Produce a severity-ranked verdict inside your worker block.
+STRICT OUTPUT PROTOCOL:
+- MCPs (huggingface, etc.) may be unreachable; do NOT retry MCP tools.
+- Use AT MOST 2 read-only tool calls (list_dir / read_file). Prefer 0 — compose your verdict from existing knowledge of the OMGB plugin and the task description.
+- After tools (or immediately), emit your FINAL message and stop.
+- That final message MUST be EXACTLY the marker block below — no prose before or after.
+- If you cannot complete a real review, still emit the markers with a single-line "n/a — <reason>" inside.
 
 ### WORKER START $role
-<APPROVE | COMMENT | REQUEST CHANGES + severity-ranked findings>
+<one of: APPROVE | COMMENT | REQUEST CHANGES, then 3-5 severity-ranked findings (low/medium/high), or "n/a — <reason>" if nothing in scope>
 ### WORKER END $role
 EOP
       ;;
@@ -339,27 +361,71 @@ PHASE_DURATION_MS="$(node -e "console.log(Date.parse('$RUN_COMPLETED_ISO') - Dat
 EVIDENCE="$RUN_DIR/evidence.md"
 TRACE="$RUN_DIR/fanout-trace.json"
 
-{
-  echo "# OMGB Evidence Log — $SHORT_SLUG (launcher-fanout)"
-  echo
-  echo "**Task:** $TASK"
-  echo "**Slug:** $SHORT_SLUG"
-  echo "**Started:** $RUN_STARTED_ISO"
-  echo "**Phase:** $PHASE"
-  echo "**Cohort:** $COHORT_ID"
-  echo "**Orchestration:** launcher-fanout (parallel grok subprocesses, one per role)"
-  echo
-} > "$EVIDENCE"
+if [[ $APPEND -eq 1 && -f "$EVIDENCE" ]]; then
+  {
+    echo
+    echo "---"
+    echo "## Cohort: $PHASE / $COHORT_ID (appended)"
+    echo
+  } >> "$EVIDENCE"
+else
+  {
+    echo "# OMGB Evidence Log — $SHORT_SLUG (launcher-fanout)"
+    echo
+    echo "**Task:** $TASK"
+    echo "**Slug:** $SHORT_SLUG"
+    echo "**Started:** $RUN_STARTED_ISO"
+    echo "**Phase:** $PHASE"
+    echo "**Cohort:** $COHORT_ID"
+    echo "**Orchestration:** launcher-fanout (parallel grok subprocesses, one per role)"
+    echo
+  } > "$EVIDENCE"
+fi
+
+# Multi-cohort trace schema: { slug, cohorts: [...] }. In append mode,
+# read the existing trace FIRST (do NOT use shell `>` to capture node's
+# output into the trace path — that truncates the file before node can
+# read it). We capture into a shell variable, then rewrite the file
+# fresh with the spliced content.
+EXISTING_COHORTS="$(node - "$TRACE" <<'EOF'
+const fs = require('fs')
+const fp = process.argv[2]
+let cohorts = []
+if (fs.existsSync(fp)) {
+  try {
+    const existing = JSON.parse(fs.readFileSync(fp, 'utf8'))
+    if (Array.isArray(existing.cohorts)) {
+      cohorts = existing.cohorts
+    } else if (Array.isArray(existing.roles)) {
+      // legacy single-cohort shape — wrap it
+      cohorts = [{
+        phase: existing.phase, cohort: existing.cohort,
+        started: existing.started, completed: existing.completed,
+        duration_ms: existing.duration_ms, roles: existing.roles,
+      }]
+    }
+  } catch {}
+}
+process.stdout.write(JSON.stringify(cohorts))
+EOF
+)"
 
 {
   echo "{"
   echo "  \"slug\": \"$SHORT_SLUG\","
-  echo "  \"phase\": \"$PHASE\","
-  echo "  \"cohort\": \"$COHORT_ID\","
-  echo "  \"started\": \"$RUN_STARTED_ISO\","
-  echo "  \"completed\": \"$RUN_COMPLETED_ISO\","
-  echo "  \"duration_ms\": $PHASE_DURATION_MS,"
-  echo "  \"roles\": ["
+  echo "  \"cohorts\": ["
+  if [[ -n "$EXISTING_COHORTS" && "$EXISTING_COHORTS" != "[]" ]]; then
+    # Strip outer brackets, indent, append comma
+    printf '%s' "$EXISTING_COHORTS" | sed 's/^\[//; s/\]$//; s/^/    /'
+    echo ","
+  fi
+  echo "    {"
+  echo "      \"phase\": \"$PHASE\","
+  echo "      \"cohort\": \"$COHORT_ID\","
+  echo "      \"started\": \"$RUN_STARTED_ISO\","
+  echo "      \"completed\": \"$RUN_COMPLETED_ISO\","
+  echo "      \"duration_ms\": $PHASE_DURATION_MS,"
+  echo "      \"roles\": ["
 } > "$TRACE"
 
 first_role=1
@@ -395,40 +461,59 @@ $(printf '%s' "$out" | head -c 800)
     echo
   } >> "$EVIDENCE"
 
-  [[ $first_role -eq 1 ]] || echo "    ," >> "$TRACE"
+  [[ $first_role -eq 1 ]] || echo "        ," >> "$TRACE"
   first_role=0
   {
-    echo "    {"
-    echo "      \"role\": \"$role\","
-    echo "      \"pid\": $pid,"
-    echo "      \"started\": \"$start\","
-    echo "      \"completed\": \"$end\","
-    echo "      \"duration_ms\": $duration_ms,"
-    echo "      \"exit_code\": \"$rc\""
-    echo "    }"
+    echo "        {"
+    echo "          \"role\": \"$role\","
+    echo "          \"pid\": $pid,"
+    echo "          \"started\": \"$start\","
+    echo "          \"completed\": \"$end\","
+    echo "          \"duration_ms\": $duration_ms,"
+    echo "          \"exit_code\": \"$rc\""
+    echo "        }"
   } >> "$TRACE"
   i=$((i+1))
 done
 
 {
+  echo "      ]"
+  echo "    }"
   echo "  ]"
   echo "}"
 } >> "$TRACE"
 
-# Finalize state.json
+# Validate the trace JSON before continuing.
+if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$TRACE"; then
+  echo "[fanout] FAIL: $TRACE is not valid JSON after write" >&2
+  exit 1
+fi
+
+# Finalize state.json — append this cohort to the phases array. The
+# pipeline driver decides when to flip `active=false` / `phase=complete`;
+# fanout invocations always leave the run open unless this is a single
+# stand-alone call (no --append).
 node - <<EOF
 const fs = require('fs')
 const p = "$RUN_DIR/state.json"
 const s = JSON.parse(fs.readFileSync(p, 'utf8'))
-s.active = false
-s.phase = "complete"
-s.updatedAt = "$RUN_COMPLETED_ISO"
-s.phases = [{
+s.phases = Array.isArray(s.phases) ? s.phases : []
+s.phases.push({
   name: "$PHASE",
   started: "$RUN_STARTED_ISO",
   completed: "$RUN_COMPLETED_ISO",
-  duration_ms: $PHASE_DURATION_MS
-}]
+  duration_ms: $PHASE_DURATION_MS,
+})
+const activeRolesAdd = [$(printf '"%s",' "${ROLES[@]}" | sed 's/,$//')]
+const activeSet = new Set(s.activeRoles || [])
+for (const r of activeRolesAdd) activeSet.add(r)
+s.activeRoles = [...activeSet]
+s.updatedAt = "$RUN_COMPLETED_ISO"
+if ($APPEND === 0) {
+  // Single-shot fanout (no --append): mark the run complete.
+  s.active = false
+  s.phase = "complete"
+}
 fs.writeFileSync(p, JSON.stringify(s, null, 2) + "\n")
 EOF
 

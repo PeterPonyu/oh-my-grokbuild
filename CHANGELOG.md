@@ -1,5 +1,80 @@
 # Changelog
 
+## 0.7.0 — 2026-05-21
+
+Multi-phase launcher pipeline + tighter audit + placeholder detection.
+
+### What shipped
+
+- **`scripts/local/launch-omgb-pipeline.sh`** (new): chains multiple
+  `launch-omgb-fanout.sh` invocations into a single OMGB run spanning
+  several phases. Default pipeline is `grounding → review`; override
+  with `--phases "csv"`. Each phase forks its own role cohort in
+  parallel, then control returns to the pipeline driver for the next
+  phase. The result is a single run dir with one mission.md, one
+  state.json (phases array spans every cohort), one evidence.md
+  (Subagent blocks for every spawned role), and one
+  fanout-trace.json (cohorts array).
+- **`scripts/local/launch-omgb-fanout.sh --append`**: append-mode
+  preserves prior mission.md/state.json/tasks.json/review.md and
+  pushes the new cohort onto `state.json.phases`,
+  `fanout-trace.json.cohorts`, and `evidence.md`. This is what
+  pipeline.sh uses on every phase after the first.
+- **`fanout-trace.json` schema** is now multi-cohort:
+  `{slug, cohorts: [{phase, cohort, started, completed, duration_ms, roles: [...]}, ...]}`.
+  The audit handles both the new shape and the legacy single-cohort
+  shape (`{slug, phase, cohort, roles: [...]}`) for backward compat.
+- **Tightened audit (`scripts/ci/check-subagent-evidence.mjs`)**: now
+  detects launcher-fanout placeholder markers. When a subprocess
+  returns without emitting real WORKER START/END content, the launcher
+  synthesizes a placeholder `### WORKER START <role>\n(missing markers
+  — raw output below)\n### WORKER END <role>`. The audit catches this
+  literal string and emits a `[medium]` finding so a pass-through
+  marker doesn't masquerade as real worker output.
+- **Tighter role prompts in fanout.sh**: planner / architect / all four
+  reviewer roles now get the same STRICT OUTPUT PROTOCOL that
+  grounding's scout + researcher received in v0.6.0 — explicit
+  tool-call cap, "emit markers as FINAL message and stop", explicit
+  fallback "n/a — <reason>" when the role can't produce a real review.
+- **SKILL.md** gains a "Launcher Fan-Out (recommended path under Grok
+  0.1.x)" section above the Mandatory Subagent Spawning rules,
+  explaining why the launcher path is the bridge to a passing run
+  while in-session leader parallel-spawning is still developing.
+
+### Verified end-to-end on this machine
+
+```
+$ scripts/local/launch-omgb-pipeline.sh pipeline-test "<task>" --launch
+[pipeline] phase 0/2: grounding
+[fanout]   forked codebase-scout
+[fanout]   forked researcher
+[pipeline] phase 1/2: review
+[fanout]   forked code-reviewer
+[fanout]   forked security-reviewer
+[fanout]   forked performance-reviewer
+[fanout]   forked ux-reviewer
+[pipeline] run complete. state.json marked phase=complete.
+
+$ node scripts/ci/validate.mjs --audit-run pipeline-test
+[OMGB] audit passed — pipeline-test
+  phase: complete
+  spawned roles: codebase-scout, researcher, code-reviewer,
+                 security-reviewer, performance-reviewer, ux-reviewer
+[OMGB] audit passed (1 runs ok, 0 skipped)
+```
+
+All 6 subprocesses across the 2 cohorts exited `rc=0`; zero placeholder
+markers in evidence.md; both grounding (g1) and review (r1) cohorts
+recorded in fanout-trace.json with per-role wall-clock timings. First
+multi-phase OMGB run in this repo to pass the audit with real subagent
+work end-to-end.
+
+### Bug fixes in the new schema
+
+- Append-mode trace writer: shell `>` truncated `$TRACE` before node
+  could read it, losing the prior cohorts. Fixed by capturing node's
+  stdout into a shell variable before rewriting the file.
+
 ## 0.6.0 — 2026-05-21
 
 Launcher-side fan-out: the first orchestration mode that actually produces

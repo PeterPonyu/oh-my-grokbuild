@@ -39,6 +39,36 @@ The Grok client also bundles its own `roles/<name>.toml`, `agents/<name>.md`,
 and `skills/<name>/SKILL.md` under `~/.grok/bundled/`. OMGB's role files match
 that native layout so Grok can discover them through ordinary plugin payloads.
 
+## Launcher Fan-Out (recommended path under Grok 0.1.x)
+
+Grok 0.1.x's in-session leader does not reliably emit multiple
+`spawn_subagent` calls in a single assistant turn — every test we've run
+produced ~80s gaps between consecutive spawn calls. The v0.5.0
+transcript-based audit correctly blocks such runs. To produce a passing
+OMGB run today, use the **launcher-fanout** orchestration mode:
+
+```bash
+# Single phase cohort (e.g. grounding: scout + researcher in parallel)
+scripts/local/launch-omgb-fanout.sh <slug> "<task>" --launch
+
+# Multi-phase pipeline (e.g. grounding then review)
+scripts/local/launch-omgb-pipeline.sh <slug> "<task>" --launch
+```
+
+The launcher itself acts as the orchestrator and forks N parallel
+`grok --agent <role>` subprocesses, one per role. Each subprocess is a
+single-role headless grok session. Their wall-clock start timestamps are
+recorded in `<rundir>/fanout-trace.json` and the audit reads that as
+ground truth (same role as Grok's session `events.jsonl` for in-session
+spawns). Subprocesses spawned by the launcher start within milliseconds
+of each other — true wall-clock parallelism, not assistant-turn
+parallelism.
+
+The in-session leader path (`/omgb` skill loaded into one grok session)
+remains the primary contract. When Grok's leader gains real single-turn
+multi-tool-use, that path will work too. Fan-out is the bridge that lets
+OMGB deliver on the parallel promise under current Grok.
+
 ## Mandatory Subagent Spawning (no synthesis)
 
 **This section is load-bearing. Read it before activating any role.**

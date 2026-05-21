@@ -154,6 +154,11 @@ function findSubagentBlocks(evidenceText) {
     const serialReasonMatch = body.match(/^- *serial_reason:\s*(.+)$/m)
     const startedMatch = body.match(/^- *started:\s*(\S+)/m)
     const workerMarker = body.includes(`### WORKER START ${role}`) && body.includes(`### WORKER END ${role}`)
+    // Detect launcher-fanout placeholder: when a subprocess returned but
+    // emitted no marker block, the launcher synthesizes one with this
+    // literal placeholder text. Pass-through markers do NOT count as
+    // real worker output for the audit.
+    const placeholderMarker = body.includes("(missing markers — raw output below)")
 
     blocks.push({
       role,
@@ -164,6 +169,7 @@ function findSubagentBlocks(evidenceText) {
       serial_reason: serialReasonMatch ? serialReasonMatch[1].trim() : null,
       started: startedMatch ? startedMatch[1] : null,
       has_worker_marker: workerMarker,
+      has_placeholder_marker: placeholderMarker,
       has_synthesis_justification: !!justifMatch,
     })
   }
@@ -426,6 +432,12 @@ function auditRun(slug) {
           severity: "medium",
           role,
           message: `Subagent block for '${role}' (spawn_method=${b.spawn_method}) is missing '### WORKER START/END ${role}' markers`,
+        })
+      } else if (b.has_placeholder_marker) {
+        findings.push({
+          severity: "medium",
+          role,
+          message: `Subagent block for '${role}' has a placeholder marker — the launcher synthesized '(missing markers — raw output below)' because the subprocess returned without emitting real WORKER START/END content. Tighten the role prompt or raise --max-turns, then re-run.`,
         })
       }
     }

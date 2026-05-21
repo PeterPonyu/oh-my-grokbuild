@@ -1,6 +1,6 @@
 {
   "name": "oh-my-grokbuild",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "One-skill Grok Build orchestration plugin with persistent role-team workflow guidance.",
   "type": "module",
   "private": true,
