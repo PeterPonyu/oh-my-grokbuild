@@ -101,8 +101,18 @@ const ALLOWED_SPAWN_METHODS = new Set([
   "agents-json",
   "agent-flag",
   "task-tool",
+  "spawn",           // alias Grok's event log uses for spawn_subagent
+  "launcher-fanout", // launcher forked one grok subprocess per role (truly parallel)
   "unavailable",
 ])
+
+// Spawn methods that disable the leader-claimed-timestamp gaming surface
+// because the audit can verify them against an independent data source.
+//   task-tool / spawn          -> Grok session events.jsonl
+//   launcher-fanout            -> <rundir>/fanout-trace.json
+// Anything else falls back to the cohort + 60s-window heuristic.
+const TASK_TOOL_METHODS = new Set(["task-tool", "spawn"])
+const FANOUT_METHODS = new Set(["launcher-fanout"])
 
 const REVIEWER_ROLES = new Set([
   "code-reviewer",
@@ -171,7 +181,7 @@ function parseIsoMs(s) {
   return Number.isNaN(t) ? null : t
 }
 
-function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs) {
+function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsByRole) {
   const findings = []
   // Transcript ground truth: if Grok's events.jsonl is available, compute
   // the largest gap between consecutive spawn_subagent `tool_started`
@@ -233,8 +243,33 @@ function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs) {
       }
     }
 
-    // Transcript-based check (overrides leader-claimed timestamps).
-    if (transcriptGapsMs && cohorts.size > 0) {
+    // Ground-truth concurrency check: prefer per-method evidence over the
+    // leader-claimed `started:` timestamps which can be fabricated.
+    const allFanout = phaseBlocks.every((b) => FANOUT_METHODS.has(b.spawn_method))
+    const allTaskTool = phaseBlocks.every((b) => TASK_TOOL_METHODS.has(b.spawn_method))
+
+    if (allFanout && fanoutStartsByRole) {
+      // launcher-fanout: read per-role start times from fanout-trace.json.
+      const roleStarts = phaseBlocks
+        .map((b) => fanoutStartsByRole.get(b.role))
+        .filter((t) => typeof t === "number" && !Number.isNaN(t))
+      if (roleStarts.length >= 2) {
+        const spread = Math.max(...roleStarts) - Math.min(...roleStarts)
+        if (spread > DEFINITELY_SERIAL_MIN_GAP_MS) {
+          findings.push({
+            severity: "high",
+            role: phaseBlocks.map((b) => b.role).join("+"),
+            message: `phase=${phase} fanout-trace: subprocess starts spread ${Math.round(spread / 1000)}s apart (>${DEFINITELY_SERIAL_MIN_GAP_MS / 1000}s). Launcher did not actually fork in parallel.`,
+          })
+        } else if (spread > SAME_TURN_MAX_GAP_MS) {
+          findings.push({
+            severity: "medium",
+            role: phaseBlocks.map((b) => b.role).join("+"),
+            message: `phase=${phase} fanout-trace: subprocess starts ${Math.round(spread)}ms apart (>${SAME_TURN_MAX_GAP_MS}ms). Likely not concurrent fork.`,
+          })
+        }
+      }
+    } else if (allTaskTool && transcriptGapsMs) {
       const maxGap = Math.max(...transcriptGapsMs)
       if (maxGap > DEFINITELY_SERIAL_MIN_GAP_MS) {
         findings.push({
@@ -301,8 +336,28 @@ function auditRun(slug) {
     ? spawnStartedTimestamps(parseGrokSpawnEvents(sessionDir))
     : null
 
+  // launcher-fanout mode writes a per-role trace next to evidence.md.
+  // Each entry records the real wall-clock start of one parallel
+  // `grok --agent <role>` subprocess — that's the ground truth the
+  // launcher can prove (the launcher itself forks the subprocesses).
+  const fanoutTracePath = path.join(runDir, "fanout-trace.json")
+  let fanoutStartsByRole = null
+  if (existsSync(fanoutTracePath)) {
+    try {
+      const trace = JSON.parse(readText(fanoutTracePath))
+      fanoutStartsByRole = new Map()
+      for (const entry of trace.roles ?? []) {
+        if (entry?.role && entry?.started) {
+          fanoutStartsByRole.set(entry.role, Date.parse(entry.started))
+        }
+      }
+    } catch {
+      fanoutStartsByRole = null
+    }
+  }
+
   const findings = []
-  findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts))
+  findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts, fanoutStartsByRole))
 
   // Sanity-check phases array when the run is complete.
   if (state.phase === "complete") {

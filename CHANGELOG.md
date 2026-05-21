@@ -1,5 +1,87 @@
 # Changelog
 
+## 0.6.0 — 2026-05-21
+
+Launcher-side fan-out: the first orchestration mode that actually produces
+real parallel role execution under Grok 0.1.x.
+
+### Why this exists
+
+The v0.4.0 / v0.5.0 contract says "spawn multiple `spawn_subagent` calls in
+one assistant turn." Every Grok run we've tested ends up serializing those
+calls across consecutive turns (86s gap was the typical pattern). The
+v0.5.0 transcript-based audit correctly catches that — but it leaves OMGB
+unable to produce a passing run because Grok's leader does not currently
+emit single-turn multi-tool-use reliably.
+
+Fan-out solves this at a different layer: the **launcher itself** acts as
+the orchestrator and forks N parallel `grok --agent <role>` subprocesses,
+one per role. Each subprocess is a single-role headless grok session.
+Their real wall-clock start timestamps go into a `fanout-trace.json` that
+the audit reads as ground truth — the same way it reads the in-session
+Grok `events.jsonl` for `spawn_method: task-tool`.
+
+### Changes
+
+- **`scripts/local/launch-omgb-fanout.sh`** (new): forks parallel grok
+  subprocesses for a phase cohort. Defaults:
+  - `--phase grounding` → codebase-scout + researcher
+  - `--phase planning` → planner + architect
+  - `--phase review` → code-reviewer + security-reviewer + performance-reviewer + ux-reviewer
+  - Override with `--roles "csv"`.
+  - `--launch` actually forks; default is dry-run.
+  - Writes mission.md, state.json (with phases array), tasks.json,
+    review.md (with Verdict), evidence.md (with Subagent blocks),
+    fanout-trace.json.
+  - Each subprocess uses `--no-memory --no-plan --disable-web-search
+    --no-subagents --permission-mode auto` plus `--rules` instructing the
+    role agent to ignore MCP retries and emit WORKER START/END markers as
+    its final message.
+- **`scripts/ci/check-subagent-evidence.mjs`**: extended to read
+  `<rundir>/fanout-trace.json` when a Subagent block declares
+  `spawn_method: launcher-fanout`. Per-role start times in the trace are
+  the audit's ground truth — gap < 1.5s = pass, > 5s = high-severity.
+- **`ALLOWED_SPAWN_METHODS`** gains `launcher-fanout` (new) and `spawn`
+  (alias for `task-tool`; matches the label Grok's event log uses for
+  `spawn_subagent`). The `spawn` alias resolves a long-standing false
+  finding on the legacy `omgb-smoke` run.
+
+### Verified on this machine
+
+```
+$ scripts/local/launch-omgb-fanout.sh fanout-smoke "Map the OMGB plugin layout" --launch
+[fanout] forking 2 parallel grok subprocesses
+[fanout]   forked codebase-scout pid=91211
+[fanout]   forked researcher pid=91219
+[fanout] all subprocesses returned
+
+$ node scripts/ci/validate.mjs --audit-run fanout-smoke
+[OMGB] audit passed — fanout-smoke
+  phase: complete
+  spawned roles: codebase-scout, researcher
+[OMGB] audit passed (1 runs ok, 0 skipped)
+```
+
+Both subprocess `started` timestamps were **1 ms apart**
+(`05:29:14.962Z` and `05:29:14.963Z`) — true wall-clock fork. Each
+produced real worker output between proper WORKER START/END markers.
+Researcher honestly noted that web/MCPs were unreachable in the session
+(0 tool calls used). Codebase-scout produced an accurate map of the
+plugin layout.
+
+### When to use which mode
+
+| Goal | Use |
+|---|---|
+| Trust the leader to orchestrate the full pipeline | `launch-omgb-team.sh ... --launch` (in-session leader, `/omgb` skill) — but be aware Grok 0.1.x serializes spawns; audit will likely block |
+| Get a single phase cohort to actually run in parallel | `launch-omgb-fanout.sh <slug> "<task>" --phase grounding --launch` |
+| Run all phases via fan-out | future work — chain `--phase grounding`, `--phase planning`, `--phase execution`, `--phase review` |
+
+The two modes coexist. The launcher does NOT replace the in-session
+leader — when Grok improves single-turn multi-tool-use, the in-session
+path will work too. Fan-out is what makes OMGB deliver on the parallel
+promise today.
+
 ## 0.5.0 — 2026-05-21
 
 Audit now reads Grok's session transcript (`events.jsonl`) as ground truth
