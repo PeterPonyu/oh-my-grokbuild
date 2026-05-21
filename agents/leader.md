@@ -133,8 +133,11 @@ For every role you spawn in any phase, append to `evidence.md`:
 
 - spawn_method: agents-json | agent-flag | task-tool | unavailable
 - invocation: <exact command, Task call id, or session id>
+- phase: intake | grounding | planning | execution | verification | review | fix-loop | finalization
+- cohort: <id, e.g. "g1"> | serial-by-design  (add `- serial_reason: ...` if serial-by-design)
 - started: <ISO-8601>
 - completed: <ISO-8601>
+- duration_ms: <completed - started, integer milliseconds>
 - worker_output_excerpt: |
     ### WORKER START <role>
     <verbatim 5–30 lines from the subagent reply>
@@ -147,6 +150,29 @@ its own `### WORKER START <role>` / `### WORKER END <role>` markers. You copy
 the block as-is. You do not paraphrase, condense, or rewrite it. If the worker
 forgot the markers, re-spawn the worker with a reminder; do not invent the
 output.
+
+**Do not fabricate `started:` / `completed:` / `duration_ms:` fields to make
+a serial run look parallel.** The audit reads the host's
+`events.jsonl` directly. A claimed `cohort: g1 + started 2 seconds apart`
+will surface a high-severity finding if the transcript shows your two
+`spawn_subagent` `tool_started` events were 86 seconds apart — the audit
+prints the real gap in the report.
+
+### Phase-duration recording
+
+Whenever you transition out of a phase, append one entry to `state.json.phases`:
+
+```
+{
+  "name": "grounding",
+  "started": "2026-05-21T01:16:28Z",
+  "completed": "2026-05-21T01:19:14Z",
+  "duration_ms": 166000
+}
+```
+
+`duration_ms = Date.parse(completed) - Date.parse(started)`. The audit
+sanity-checks this array exists when `state.json.phase` is `complete`.
 
 ### When subagents are unavailable
 

@@ -19,10 +19,83 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
+import os from "node:os"
 import { fileURLToPath } from "node:url"
 
 const root = fileURLToPath(new URL("../..", import.meta.url))
 const runsRoot = path.join(root, ".grok", "omgb", "runs")
+const grokSessionsRoot = path.join(os.homedir(), ".grok", "sessions")
+
+// A "single assistant turn" — two spawn_subagent calls in the same tool_use
+// array — produces events.jsonl `tool_started` records within ~milliseconds
+// of each other. Anything beyond 1.5s strongly suggests two separate
+// assistant turns. Beyond 5s is decisive.
+const SAME_TURN_MAX_GAP_MS = 1500
+const DEFINITELY_SERIAL_MIN_GAP_MS = 5000
+
+function urlEncodeCwd(cwd) {
+  // Grok URL-encodes path separators in the session dir name.
+  return cwd.replace(/\//g, "%2F")
+}
+
+function findGrokSessionForRun(repoRoot, slug, runMtimeMs) {
+  // Normalize trailing slash: fileURLToPath('../..') returns '/path/' with a
+  // trailing slash, but Grok stores `info.cwd` without one.
+  const normalizedRoot = repoRoot.replace(/\/$/, "")
+  const cwdEncoded = urlEncodeCwd(normalizedRoot)
+  const dir = path.join(grokSessionsRoot, cwdEncoded)
+  if (!existsSync(dir)) return null
+
+  const candidates = []
+  for (const entry of readdirSync(dir)) {
+    const sessionDir = path.join(dir, entry)
+    const summaryPath = path.join(sessionDir, "summary.json")
+    const eventsPath = path.join(sessionDir, "events.jsonl")
+    if (!existsSync(summaryPath) || !existsSync(eventsPath)) continue
+    let summary
+    try {
+      summary = JSON.parse(readFileSync(summaryPath, "utf8"))
+    } catch {
+      continue
+    }
+    if (summary?.info?.cwd !== normalizedRoot) continue
+    const summ = summary.session_summary || summary.generated_title || ""
+    const updatedAt = summary.updated_at ? Date.parse(summary.updated_at) : 0
+    // Heuristic: match if the session summary mentions the slug as a token,
+    // or if its updated_at is within the run dir's mtime window.
+    const slugMatch = summ.toLowerCase().includes(slug.toLowerCase())
+    const withinWindow = runMtimeMs && Math.abs(updatedAt - runMtimeMs) < 10 * 60 * 1000
+    if (slugMatch || withinWindow) {
+      candidates.push({ sessionDir, updatedAt, slugMatch })
+    }
+  }
+  if (candidates.length === 0) return null
+  // Prefer slug-matched, then most recently updated.
+  candidates.sort((a, b) => (b.slugMatch ? 1 : 0) - (a.slugMatch ? 1 : 0) || b.updatedAt - a.updatedAt)
+  return candidates[0].sessionDir
+}
+
+function parseGrokSpawnEvents(sessionDir) {
+  const eventsPath = path.join(sessionDir, "events.jsonl")
+  if (!existsSync(eventsPath)) return []
+  const events = []
+  for (const line of readFileSync(eventsPath, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const ev = JSON.parse(line)
+      if (ev.tool_name === "spawn_subagent" && (ev.type === "tool_started" || ev.type === "tool_completed")) {
+        events.push({ type: ev.type, ts: Date.parse(ev.ts), duration_ms: ev.duration_ms ?? null })
+      }
+    } catch {
+      /* skip */
+    }
+  }
+  return events
+}
+
+function spawnStartedTimestamps(events) {
+  return events.filter((e) => e.type === "tool_started").map((e) => e.ts).sort((a, b) => a - b)
+}
 
 const ALLOWED_SPAWN_METHODS = new Set([
   "agents-json",
@@ -98,8 +171,21 @@ function parseIsoMs(s) {
   return Number.isNaN(t) ? null : t
 }
 
-function checkConcurrencyFindings(blocks) {
+function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs) {
   const findings = []
+  // Transcript ground truth: if Grok's events.jsonl is available, compute
+  // the largest gap between consecutive spawn_subagent `tool_started`
+  // events. If two roles are claimed to be in the same parallel cohort but
+  // the transcript shows their spawns were emitted in separate assistant
+  // turns (gap > 1.5s), flag a high-severity contract violation that the
+  // leader cannot game with hand-crafted `started:` timestamps.
+  let transcriptGapsMs = null
+  if (Array.isArray(transcriptSpawnStartsMs) && transcriptSpawnStartsMs.length >= 2) {
+    transcriptGapsMs = []
+    for (let i = 1; i < transcriptSpawnStartsMs.length; i++) {
+      transcriptGapsMs.push(transcriptSpawnStartsMs[i] - transcriptSpawnStartsMs[i - 1])
+    }
+  }
   for (const [phase, expectedSet] of Object.entries(MANDATORY_PARALLEL_PHASES)) {
     const phaseBlocks = blocks.filter((b) => b.phase === phase && expectedSet.has(b.role))
     if (phaseBlocks.length < 2) continue
@@ -146,6 +232,24 @@ function checkConcurrencyFindings(blocks) {
         })
       }
     }
+
+    // Transcript-based check (overrides leader-claimed timestamps).
+    if (transcriptGapsMs && cohorts.size > 0) {
+      const maxGap = Math.max(...transcriptGapsMs)
+      if (maxGap > DEFINITELY_SERIAL_MIN_GAP_MS) {
+        findings.push({
+          severity: "high",
+          role: phaseBlocks.map((b) => b.role).join("+"),
+          message: `phase=${phase} transcript-evidence: spawn_subagent events in events.jsonl are ${Math.round(maxGap / 1000)}s apart (>${DEFINITELY_SERIAL_MIN_GAP_MS / 1000}s = definitely serial). The leader emitted these in consecutive assistant turns, not a single one. cohort='${phaseBlocks[0].cohort || "?"}' was hand-crafted; the host transcript disagrees.`,
+        })
+      } else if (maxGap > SAME_TURN_MAX_GAP_MS) {
+        findings.push({
+          severity: "medium",
+          role: phaseBlocks.map((b) => b.role).join("+"),
+          message: `phase=${phase} transcript-evidence: spawn_subagent events ${Math.round(maxGap)}ms apart (>${SAME_TURN_MAX_GAP_MS}ms). Likely not the same assistant turn.`,
+        })
+      }
+    }
   }
   return findings
 }
@@ -182,8 +286,44 @@ function auditRun(slug) {
     blocksByRole.get(b.role).push(b)
   }
 
+  // Locate the Grok session transcript for this run. If found, the audit
+  // verifies spawn timing against events.jsonl directly instead of trusting
+  // the leader's `started:` claims (which previous runs proved can be
+  // fabricated to look parallel while the real spawns were 86s apart).
+  let runMtimeMs = 0
+  try {
+    runMtimeMs = statSync(runDir).mtimeMs
+  } catch {
+    runMtimeMs = 0
+  }
+  const sessionDir = findGrokSessionForRun(root, slug, runMtimeMs)
+  const transcriptSpawnStarts = sessionDir
+    ? spawnStartedTimestamps(parseGrokSpawnEvents(sessionDir))
+    : null
+
   const findings = []
-  findings.push(...checkConcurrencyFindings(blocks))
+  findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts))
+
+  // Sanity-check phases array when the run is complete.
+  if (state.phase === "complete") {
+    if (!Array.isArray(state.phases) || state.phases.length === 0) {
+      findings.push({
+        severity: "medium",
+        role: "leader",
+        message: "state.json.phases array is missing or empty even though phase=complete. The leader must record per-phase start/completed/duration_ms entries.",
+      })
+    } else {
+      for (const p of state.phases) {
+        if (!p?.name || !p?.started || !p?.completed) {
+          findings.push({
+            severity: "medium",
+            role: "leader",
+            message: `state.json.phases entry is malformed (need name + started + completed): ${JSON.stringify(p)}`,
+          })
+        }
+      }
+    }
+  }
 
   for (const role of activeRoles) {
     const roleBlocks = blocksByRole.get(role) || []

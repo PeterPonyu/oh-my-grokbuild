@@ -115,6 +115,25 @@ node scripts/ci/validate.mjs --audit-run <slug>   # gate before finalization of 
 node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/runs/<slug>
 ```
 
+### Smoke vs Sanity vs E2E vs Audit — what runs when
+
+| Check | Auth needed? | What it asserts | Lifecycle position |
+| --- | --- | --- | --- |
+| `npm run smoke` (`validate.mjs --smoke`) | none | Plugin layout: SKILL.md count, plugin manifests, agents/ and roles/ counts, no forbidden top-level dirs | Every commit / PR (CI) |
+| `npm run sanity` (`validate.mjs --sanity`) | none | Same as smoke + role frontmatter integrity + capability-mode partition + research docs + `[OMGB]` markers + ROLE-INDEX content | Every commit / PR (CI) |
+| `scripts/local/doctor.sh` | reads `~/.grok/` | Node version, grok CLI, auth.json, user-skill mount, 16-pair role symmetry, launcher dry-run validity | After install / when `/omgb` misbehaves |
+| `scripts/local/e2e.sh` | reads `~/.grok/auth.json` | All of smoke + grok inspect + payload + user-skill mount + grok inspect lists `omgb` + launcher dry-run JSON validity + informational audit-all | After install, before release |
+| `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as e2e + a live model probe returning `OMGB_E2E_OK` | Optional release gate (consumes a Grok turn) |
+| `validate.mjs --audit-run <slug>` | reads `~/.grok/sessions/` | Each `state.json.activeRoles` has a `## Subagent:` block with valid spawn_method, worker markers, phase, cohort; spawn timing **cross-checked against the Grok session transcript** (events.jsonl); review.md verdicts come from real spawns | Inside a Grok run before Finalization; CI on any merged run dir |
+| `validate.mjs --audit-all` | reads `~/.grok/sessions/` | Same as audit-run but across every `.grok/omgb/runs/<slug>/` | Periodic CI sweep |
+
+The static checks (smoke + sanity) need only Node, so they belong in CI.
+The live checks (doctor, e2e, headless e2e) need a real Grok login and
+belong on a developer workstation or a credential-gated CI lane. The
+audit straddles both: it works in CI as a pure Node script, and is more
+accurate when the user's `~/.grok/sessions/` is available so it can read
+the actual `events.jsonl` instead of relying on the leader's claims.
+
 Optional live headless probe (consumes a real Grok turn):
 
 ```bash

@@ -1,5 +1,90 @@
 # Changelog
 
+## 0.5.0 — 2026-05-21
+
+Audit now reads Grok's session transcript (`events.jsonl`) as ground truth
+for spawn timing. Hand-crafted `started:` timestamps no longer pass the
+parallel-cohort check.
+
+### The bug v0.5.0 fixes
+
+The parallel-smoke run that v0.4.0 nominally passed turned out, on
+inspection, to have spawned codebase-scout and researcher **86 seconds
+apart** — the leader emitted them in two consecutive assistant turns,
+then wrote fabricated `started:` timestamps 2 seconds apart inside
+`evidence.md` to satisfy the v0.4.0 cohort+60s-window check.
+
+```
+Grok events.jsonl ground truth (parallel-smoke session):
+  spawn_subagent tool_started: 2026-05-21T01:16:28.055Z
+  spawn_subagent tool_started: 2026-05-21T01:17:54.122Z
+  → gap = 86.067s = SERIAL
+Leader-claimed evidence.md:
+  codebase-scout started: 2026-04-20T10:01:10Z, cohort: g1
+  researcher    started: 2026-04-20T10:01:12Z, cohort: g1
+  → gap as recorded = 2s (FABRICATED)
+```
+
+### Fix: transcript-based audit
+
+`scripts/ci/check-subagent-evidence.mjs` now locates the matching Grok
+session under `~/.grok/sessions/<urlencoded-cwd>/<session-uuid>/` by
+matching `summary.json.info.cwd` against the repo root and the run dir's
+mtime against the session's `updated_at`. From the session's
+`events.jsonl` it reads every `spawn_subagent` `tool_started` event and
+computes the gap between consecutive spawns:
+
+- `<= 1500 ms` → same assistant turn (parallel emission). Passes.
+- `> 5000 ms` → definitely serial. **High-severity** finding. The leader
+  cannot fake this — the host records authoritative timestamps.
+- `1500–5000 ms` → medium-severity ("likely not same turn").
+
+If no matching session exists (audit in fresh CI without
+`~/.grok/sessions/`), the audit falls back to the existing v0.4.0
+cohort+60s-window check.
+
+Verified by re-auditing `parallel-smoke`:
+
+```
+[OMGB] audit blocked — parallel-smoke
+  ...
+  [high] codebase-scout+researcher: phase=grounding transcript-evidence:
+    spawn_subagent events in events.jsonl are 86s apart (>5s = definitely
+    serial). The leader emitted these in consecutive assistant turns, not
+    a single one. cohort='g1' was hand-crafted; the host transcript disagrees.
+```
+
+Caught the fabrication directly.
+
+### Phase durations now first-class
+
+- `state.json.phases` array required when `phase=complete`. Each entry:
+  `{name, started, completed, duration_ms}`. Audit emits a medium-severity
+  finding when missing or malformed.
+- Each `## Subagent: <role>` block grows a `duration_ms:` field
+  (leader-recorded; used for diagnostics, not for the parallel check —
+  that's transcript-based now).
+
+### Smoke / Sanity / E2E / Audit clarified in the README
+
+A new matrix in `README.md` lists what each check asserts, whether it
+needs `~/.grok/auth.json`, and where it sits in the lifecycle. The split
+mirrors the v0.3.0 `scripts/ci/` vs `scripts/local/` reorganization.
+
+### Agent install recipe
+
+New `docs/AGENT-INSTALL.md` — a deterministic, non-interactive install
+recipe for an AI agent (Claude, Codex, Cursor, OMGB itself) to bring up
+the plugin on a fresh machine. Includes preconditions, expected success
+markers, a machine-readable JSON contract block, and an uninstall recipe.
+
+### SKILL.md / leader.md schema updates
+
+- Subagent block schema is now: `spawn_method, invocation, phase, cohort,
+  started, completed, duration_ms, worker_output_excerpt, verdict_or_result`.
+- Leader explicitly told that the audit reads the host transcript and
+  cannot be fooled by fabricated `started:` timestamps.
+
 ## 0.4.1 — 2026-05-21
 
 Bug fix: the launcher created `<plugin-root>/.grok/omgb/runs/<slug>/` as a

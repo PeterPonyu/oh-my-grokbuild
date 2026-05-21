@@ -71,8 +71,11 @@ For every role the leader activates in this run, append to `evidence.md`:
 
 - spawn_method: agents-json | agent-flag | task-tool | unavailable
 - invocation: <exact command, Task call id, or session id>
+- phase: intake | grounding | planning | execution | verification | review | fix-loop | finalization
+- cohort: <id, e.g. "g1"> | serial-by-design  (with `- serial_reason: ...` on the next line if serial-by-design)
 - started: <ISO-8601>
 - completed: <ISO-8601>
+- duration_ms: <completed - started, integer milliseconds>
 - worker_output_excerpt: |
     ### WORKER START <role>
     <verbatim 5–30 lines from the subagent's reply>
@@ -83,6 +86,14 @@ For every role the leader activates in this run, append to `evidence.md`:
 The worker output excerpt MUST come back inside the `### WORKER START <role>` /
 `### WORKER END <role>` markers that every worker file requires. The leader
 copies that block verbatim — no paraphrase.
+
+**The audit reads Grok's events.jsonl as ground truth for spawn timing.**
+The leader-recorded `started:` / `completed:` / `duration_ms:` fields are
+descriptive. The audit pass/fail on parallel cohorts is decided by the
+host transcript at `~/.grok/sessions/<urlencoded-cwd>/<session-uuid>/events.jsonl`,
+not by these claims. A hand-crafted "cohort: g1 + started 2s apart" will
+be flagged as a high-severity contract violation if the transcript shows
+the underlying spawns were 86s apart.
 
 ### What to do when subagents are unavailable
 
@@ -225,9 +236,17 @@ If an active run exists for the same slug, resume it instead of starting over.
   "activeRoles": [],
   "qaCycles": 0,
   "reviewRounds": 0,
-  "blockers": []
+  "blockers": [],
+  "phases": [
+    {"name": "intake",       "started": "ISO-8601", "completed": "ISO-8601", "duration_ms": 1234},
+    {"name": "grounding",    "started": "ISO-8601", "completed": "ISO-8601", "duration_ms": 5678}
+  ]
 }
 ```
+
+Append one entry to `state.json.phases` every time you transition out of a
+phase. `duration_ms = Date.parse(completed) - Date.parse(started)`. The audit
+sanity-checks the array exists when `phase` is `complete`.
 
 `tasks.json` should contain role-owned tasks:
 
