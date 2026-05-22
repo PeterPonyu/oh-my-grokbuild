@@ -17,6 +17,18 @@ fail() { printf "${RED}✗ %s${RESET}\n" "$*"; }
 warn() { printf "${YELLOW}! %s${RESET}\n" "$*"; }
 info() { printf "  %s\n" "$*"; }
 
+resolve_path() {
+  node -e 'const fs = require("fs"); try { process.stdout.write(fs.realpathSync(process.argv[1])) } catch { process.exit(1) }' "$1"
+}
+
+payload_entry_is_safe() {
+  case "$1" in
+    ""|/*|*\\*|../*|*/../*|*"/.."|".."|./*|*/./*|*"/."|"."|*[[:space:]]*)
+      return 1
+      ;;
+  esac
+}
+
 echo "OMGB Doctor — checking your Grok + omgb setup"
 echo "Source: $ROOT"
 echo
@@ -50,14 +62,34 @@ else
   warn "No $AUTH — e2e.sh and some headless flows will skip live probes (run 'grok login' if needed)"
 fi
 
-# 4. User skill mount (what makes /omgb appear)
+# 4. User skill mount (what makes /omgb appear) — now drift-aware vs current checkout
 USER_SKILL="$HOME/.grok/skills/omgb"
-if [[ -L "$USER_SKILL/SKILL.md" ]]; then
-  TARGET="$(readlink -f "$USER_SKILL/SKILL.md")"
-  if [[ -f "$TARGET" && "$TARGET" == *omgb* ]]; then
-    pass "User skill mount healthy: $USER_SKILL → $TARGET"
+EXPECTED_SKILL_TARGET="$(resolve_path "$ROOT/skills/omgb/SKILL.md")"
+EXPECTED_AGENTS_TARGET="$(resolve_path "$ROOT/agents")"
+EXPECTED_ROLES_TARGET="$(resolve_path "$ROOT/roles")"
+MOUNT_POINTS_TO_CURRENT=0
+
+if [[ -L "$USER_SKILL" ]]; then
+  warn "User skill mount directory is itself a symlink; re-run install-local.sh --force to replace it with the managed directory"
+elif [[ -L "$USER_SKILL/SKILL.md" ]]; then
+  TARGET="$(resolve_path "$USER_SKILL/SKILL.md" 2>/dev/null || true)"
+  if [[ -f "$TARGET" ]]; then
+    AGENTS_TARGET="$(resolve_path "$USER_SKILL/agents" 2>/dev/null || true)"
+    ROLES_TARGET="$(resolve_path "$USER_SKILL/roles" 2>/dev/null || true)"
+    if [[ "$TARGET" == "$EXPECTED_SKILL_TARGET" && "$AGENTS_TARGET" == "$EXPECTED_AGENTS_TARGET" && "$ROLES_TARGET" == "$EXPECTED_ROLES_TARGET" ]]; then
+      pass "User skill mount healthy and points to *this* checkout: $USER_SKILL → $TARGET"
+      MOUNT_POINTS_TO_CURRENT=1
+    else
+      warn "User skill mount exists but points to a *different* source tree (drift)"
+      info "  Current doctor source (truth): $ROOT"
+      info "  SKILL.md currently resolves to: $TARGET"
+      info "  agents currently resolves to:   $AGENTS_TARGET"
+      info "  roles currently resolves to:    $ROLES_TARGET"
+      info "  → To adopt the current tree as the active mount, run:"
+      info "     ./scripts/local/install-local.sh --force"
+    fi
   else
-    fail "User skill symlink exists but target looks wrong: $TARGET"
+    fail "User skill symlink exists but target is broken (missing file): $TARGET"
   fi
 elif [[ -e "$USER_SKILL" ]]; then
   warn "Something exists at $USER_SKILL but it is not the expected symlink from install-local.sh"
@@ -102,10 +134,25 @@ fi
 # 6. Local plugin payload (optional but nice)
 LOCAL_PAYLOAD="$HOME/.grok/plugins/local/oh-my-grokbuild"
 if [[ -d "$LOCAL_PAYLOAD" ]]; then
-  if [[ -f "$LOCAL_PAYLOAD/agents/ROLE-INDEX.md" ]]; then
-    pass "Local plugin payload present and up-to-date"
+  PAYLOAD_OK=1
+  while IFS= read -r item || [[ -n "$item" ]]; do
+    [[ "$item" =~ ^#.*$ || -z "$item" ]] && continue
+    if ! payload_entry_is_safe "$item"; then
+      warn "Unsafe local-payload.txt entry: $item"
+      PAYLOAD_OK=0
+      continue
+    fi
+    item_path="${item%/}"
+    if [[ ! -e "$LOCAL_PAYLOAD/$item_path" ]]; then
+      warn "Local plugin payload missing $item_path (listed in local-payload.txt). Re-run install-local.sh --force"
+      PAYLOAD_OK=0
+    fi
+  done < "$ROOT/local-payload.txt"
+
+  if [[ $PAYLOAD_OK -eq 1 ]]; then
+    pass "Local plugin payload present and matches local-payload.txt"
   else
-    warn "Local plugin payload exists but is stale (missing ROLE-INDEX.md). Re-run install-local.sh --force"
+    warn "Local plugin payload exists but is stale. Re-run install-local.sh --force"
   fi
 else
   info "No local plugin payload at $LOCAL_PAYLOAD (normal if you only use the user-skill mount)"
@@ -121,8 +168,8 @@ fi
 
 echo
 echo "Doctor summary:"
-if [[ -L "$USER_SKILL/SKILL.md" && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; then
-  echo -e "${GREEN}Looks good. Reload the Grok TUI (or run /plugins + /skills), then try /omgb inside the TUI.${RESET}"
+if [[ $MOUNT_POINTS_TO_CURRENT -eq 1 && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; then
+  echo -e "${GREEN}Looks good. The mount points to *this* checkout. Reload the Grok TUI (or run /plugins + /skills), then try /omgb inside the TUI.${RESET}"
   echo
   echo "Next commands you probably want:"
   echo "  node scripts/ci/validate.mjs --smoke"
@@ -131,5 +178,5 @@ if [[ -L "$USER_SKILL/SKILL.md" && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; the
   echo "  scripts/workflow/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
   echo "  cat docs/WORKING-WITH-OTHER-AGENTS.md           # hybrid team guide"
 else
-  echo -e "${RED}Problems detected above. Re-run 'scripts/local/install-local.sh --force' and then re-run this doctor.${RESET}"
+  echo -e "${RED}Problems detected above (including possible mount drift). Re-run 'scripts/local/install-local.sh --force' from the correct checkout and then re-run this doctor.${RESET}"
 fi

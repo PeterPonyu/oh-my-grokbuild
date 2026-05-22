@@ -27,6 +27,7 @@ plus per-role files that match Grok's own bundled extension layout
 ```
 plugin.json                       # root skills-only manifest
 .claude-plugin/plugin.json        # compatibility shim for Claude-style hosts
+local-payload.txt                 # local install payload manifest
 skills/omgb/SKILL.md              # the single entry-point skill
 agents/ROLE-INDEX.md              # thin index (deliberately not AGENTS.md)
 agents/<role>.md                  # 16 detailed Grok-native agent prompts
@@ -59,20 +60,21 @@ scripts/local/install-local.sh --force
 ```
 
 - Runs `node scripts/ci/validate.mjs --smoke` as a mandatory preflight.
-- Copies the minimal runtime payload (`plugin.json`, `skills/`, `agents/`, `roles/`) into `~/.grok/plugins/local/oh-my-grokbuild`.
+- Copies the minimal runtime payload declared in `local-payload.txt` into `~/.grok/plugins/local/oh-my-grokbuild`.
 - Creates (or refreshes) the user-skill mount at `~/.grok/skills/omgb` so that `/omgb` becomes immediately invocable.
 - Logs everything under `.omc/evidence/install-*.log`.
 
 **No sudo, no network, no `npm install` on the target machine.**
 
 ### Post-install step (required)
-Reload or restart the Grok Build TUI so the extensions scanner picks up the new symlinks under `~/.grok/skills/omgb` and the plugin payload under `~/.grok/plugins/local/`.
+Reload or restart the Grok Build TUI (or run `/plugins` + `/skills` inside it) so the extensions scanner picks up the new symlinks under `~/.grok/skills/omgb`.
 
-Inside the TUI you can also run `/plugins` or `/skills` to force a rescan.
+**Strongly recommended after any install or repo move:** run `./scripts/local/doctor.sh` from the current checkout. It will tell you immediately if the mount is healthy for *this* tree.
 
 ### Troubleshooting
-- `/omgb` not appearing? Check `ls -l ~/.grok/skills/omgb` — the symlinks must point to your clone. Re-run the installer with `--force`.
-- Validator smoke failed? Read the timestamped log; the most common cause is a missing role file or a forbidden top-level directory.
+- `/omgb` not appearing or pointing at the wrong tree? Run `./scripts/local/doctor.sh`. It now detects mount drift (when the symlinks point to a different checkout than the one you're currently in) and tells you the exact command to heal it.
+- The recommended first step when anything feels off: `./scripts/local/install-local.sh --force` (from the checkout you want to use) followed by `./scripts/local/doctor.sh`.
+- The payload contents are now declared in `local-payload.txt` at the repo root. Editing this file is the only thing needed when adding/removing distributable assets.
 - Want to develop without re-copying the payload every time? The user-skill mount is a symlink, so edits to `SKILL.md`, role files, and `ROLE-INDEX.md` take effect immediately after a TUI reload.
 - To skip the user-skill mount (advanced): `OMGB_SKIP_USER_SKILL_MOUNT=1 scripts/local/install-local.sh --force`.
 
@@ -83,6 +85,8 @@ node scripts/ci/validate.mjs --sanity
 npm test
 scripts/local/e2e.sh          # requires prior `grok login`
 ```
+
+For the relocation / "I moved my clone" scenario, see `docs/REPO-RELOCATION-TEST.md`.
 
 See the "Verification" section below for expected success markers.
 

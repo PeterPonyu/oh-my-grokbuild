@@ -47,6 +47,18 @@ step() {
   log "STEP: $*"
 }
 
+resolve_path() {
+  node -e 'const fs = require("fs"); try { process.stdout.write(fs.realpathSync(process.argv[1])) } catch { process.exit(1) }' "$1"
+}
+
+validate_payload_item() {
+  case "$1" in
+    ""|/*|*\\*|../*|*/../*|*"/.."|".."|./*|*/./*|*"/."|"."|*[[:space:]]*)
+      fail "unsafe local-payload.txt entry: $1"
+      ;;
+  esac
+}
+
 resolve_grok() {
   if command -v grok >/dev/null 2>&1; then
     command -v grok
@@ -91,22 +103,19 @@ main() {
   fi
   ok "inspect probe ok (rc=$INSPECT_RC)"
 
-  step "local install payload"
+  step "local install payload (driven by local-payload.txt)"
   if [[ ! -d "$LOCAL_INSTALL" ]]; then
     fail "installed payload missing at $LOCAL_INSTALL; run scripts/local/install-local.sh first"
   fi
-  for required in \
-    "plugin.json" \
-    ".claude-plugin/plugin.json" \
-    "skills/omgb/SKILL.md" \
-    "agents/ROLE-INDEX.md" \
-    "roles/leader.toml"
-  do
-    if [[ ! -e "$LOCAL_INSTALL/$required" ]]; then
-      fail "installed payload missing $required"
+  while IFS= read -r item || [[ -n "$item" ]]; do
+    [[ "$item" =~ ^#.*$ || -z "$item" ]] && continue
+    validate_payload_item "$item"
+    item_path="${item%/}"
+    if [[ ! -e "$LOCAL_INSTALL/$item_path" ]]; then
+      fail "installed payload missing $item_path (listed in local-payload.txt)"
     fi
-  done
-  ok "installed payload looks healthy"
+  done < "$ROOT/local-payload.txt"
+  ok "installed payload looks healthy (matches local-payload.txt)"
 
   step "subagent team launcher (dry-run)"
   set +e
@@ -138,12 +147,29 @@ main() {
   if [[ "${OMGB_E2E_SKIP_USER_SKILL_MOUNT:-0}" = "1" ]]; then
     log "SKIP: user-skill mount check (OMGB_E2E_SKIP_USER_SKILL_MOUNT=1)"
   else
+    EXPECTED_SKILL_TARGET="$(resolve_path "$ROOT/skills/omgb/SKILL.md")"
+    EXPECTED_AGENTS_TARGET="$(resolve_path "$ROOT/agents")"
+    EXPECTED_ROLES_TARGET="$(resolve_path "$ROOT/roles")"
+
     for required in "SKILL.md" "agents" "roles"; do
       if [[ ! -e "$USER_SKILL/$required" ]]; then
         fail "grok user-skill mount missing $required at $USER_SKILL; re-run scripts/local/install-local.sh"
       fi
     done
-    ok "grok user-skill mount looks healthy at $USER_SKILL"
+
+    SKILL_TARGET="$(resolve_path "$USER_SKILL/SKILL.md" 2>/dev/null || true)"
+    AGENTS_TARGET="$(resolve_path "$USER_SKILL/agents" 2>/dev/null || true)"
+    ROLES_TARGET="$(resolve_path "$USER_SKILL/roles" 2>/dev/null || true)"
+    if [[ "$SKILL_TARGET" != "$EXPECTED_SKILL_TARGET" ]]; then
+      fail "grok user-skill mount SKILL.md points outside current checkout: $SKILL_TARGET"
+    fi
+    if [[ "$AGENTS_TARGET" != "$EXPECTED_AGENTS_TARGET" ]]; then
+      fail "grok user-skill mount agents points outside current checkout: $AGENTS_TARGET"
+    fi
+    if [[ "$ROLES_TARGET" != "$EXPECTED_ROLES_TARGET" ]]; then
+      fail "grok user-skill mount roles points outside current checkout: $ROLES_TARGET"
+    fi
+    ok "grok user-skill mount points to current checkout at $USER_SKILL"
 
     step "grok inspect discovers omgb"
     set +e

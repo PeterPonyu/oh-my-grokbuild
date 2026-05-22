@@ -19,9 +19,10 @@ environment that runs one. Need Grok auth for the e2e probe.
 
 | Script | Purpose |
 | --- | --- |
-| `install-local.sh` | Bootstrap: copies plugin payload to `~/.grok/plugins/local/oh-my-grokbuild` and symlinks the user-skill mount at `~/.grok/skills/omgb`. |
-| `doctor.sh` | Read-only health check of Node, Grok CLI, auth, mount, role-pair symmetry, launcher dry-run. |
-| `e2e.sh` | Asserts an existing Grok login plus payload, launcher JSON validity, and (optional) a live `grok -p` reachability probe. |
+| `install-local.sh` | Bootstrap: copies the `local-payload.txt` manifest payload to `~/.grok/plugins/local/oh-my-grokbuild` and heals/symlinks the user-skill mount at `~/.grok/skills/omgb`. |
+| `doctor.sh` | Read-only health check of Node, Grok CLI, auth, mount drift, role-pair symmetry, launcher dry-run. |
+| `e2e.sh` | Asserts an existing Grok login plus manifest payload, launcher JSON validity, and (optional) a live `grok -p` reachability probe. |
+| `verify-robust-install.sh` | Local helper for robust install changes: smoke, sanity, install, doctor, and duplicate-payload-list checks. |
 
 ## scripts/workflow/ — drive an actual OMGB run
 
