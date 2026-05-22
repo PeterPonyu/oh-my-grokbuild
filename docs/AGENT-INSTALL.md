@@ -31,9 +31,10 @@ cd oh-my-grokbuild
 Side effects:
 
 - Runs `node scripts/ci/validate.mjs --smoke` as a mandatory preflight.
-- Copies the minimal payload to `~/.grok/plugins/local/oh-my-grokbuild/`.
+- Copies the `local-payload.txt` manifest payload to `~/.grok/plugins/local/oh-my-grokbuild/`.
 - Symlinks `~/.grok/skills/omgb/{SKILL.md, agents, roles}` into the repo so
   Grok auto-discovers the `omgb` skill from a normal `grok inspect`.
+- Re-running from a moved or re-cloned checkout heals stale mounts automatically.
 - Writes a timestamped log to `.omc/evidence/install-<ts>.log`.
 
 Expected success markers in the install output:
@@ -44,14 +45,16 @@ Expected success markers in the install output:
 ## Step 3: verify (non-interactive)
 
 ```bash
-./scripts/local/doctor.sh                  # quick health check
+./scripts/local/doctor.sh                  # quick health check (now drift-aware)
 npm test                                   # smoke + sanity
 ./scripts/local/e2e.sh                     # asserts existing Grok login + mount + launcher JSON
 ```
 
+**Tip:** After any repo move or re-clone, running `install-local.sh --force` from the new location + `doctor.sh` is the reliable way to heal the mount.
+
 Expected success markers:
 
-- `Looks good. Reload the Grok TUI ...` (from doctor)
+- `Looks good. The mount points to *this* checkout ...` (from doctor)
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
 - `[OMGB] e2e passed`

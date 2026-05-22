@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Robust local development experience (major install/doctor improvements)
+
+- Added `local-payload.txt` as the single source of truth for what gets copied into `~/.grok/plugins/local/oh-my-grokbuild`.
+- `install-local.sh` now automatically detects when the user-skill mount (`~/.grok/skills/omgb`) points at a different source tree and heals it on `--force`.
+- `doctor.sh` is now drift-aware: it clearly reports when the current mount does not match the checkout the doctor is running from, and prints the exact fix command.
+- Payload copy logic and sanity checks in the installer are now driven by `local-payload.txt` (no more duplicated hardcoded lists).
+- Added `docs/REPO-RELOCATION-TEST.md` — a permanent, reproducible test for the "I moved my clone and `/omgb` stopped working" scenario.
+- Updated README troubleshooting guidance and post-install recommendations.
+
+These changes make the local development workflow resilient to the common case of moving or re-cloning the repository.
+
 ## 0.7.2 — 2026-05-21
 
 State management extracted into a real Node module. JSON files get a

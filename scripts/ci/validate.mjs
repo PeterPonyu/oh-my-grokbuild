@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
@@ -91,7 +91,6 @@ const forbiddenManifestKeys = new Set([
 ])
 
 const forbiddenTopLevelDirs = ["hooks", "mcps", "mcp", "commands"]
-
 function fail(message) {
   console.error(`[OMGB] validation failed: ${message}`)
   process.exitCode = 1
@@ -172,8 +171,54 @@ function parseTomlSimple(text) {
   return map
 }
 
+function loadLocalPayloadManifest() {
+  const txt = readText("local-payload.txt")
+  const entries = []
+
+  for (const [index, rawLine] of txt.split(/\r?\n/).entries()) {
+    const line = rawLine.trim()
+    if (!line || line.startsWith("#")) continue
+
+    if (line !== rawLine) {
+      fail(`local-payload.txt:${index + 1} entries must not have leading/trailing whitespace`)
+      continue
+    }
+
+    const clean = line.endsWith("/") ? line.slice(0, -1) : line
+    const parts = clean.split("/")
+    if (
+      path.isAbsolute(clean) ||
+      clean.includes("\\") ||
+      parts.some((part) => part === "" || part === ".." || part === ".")
+    ) {
+      fail(`local-payload.txt:${index + 1} has unsafe entry: ${line}`)
+      continue
+    }
+
+    entries.push({ raw: line, path: clean })
+  }
+
+  return entries
+}
+
+function assertNoSymlinks(relativePath) {
+  const fullPath = path.join(root, relativePath)
+  const stat = lstatSync(fullPath)
+  if (stat.isSymbolicLink()) {
+    fail(`local-payload.txt entry must not be a symlink: ${relativePath}`)
+    return
+  }
+
+  if (stat.isDirectory()) {
+    for (const entry of readdirSync(fullPath)) {
+      assertNoSymlinks(path.join(relativePath, entry))
+    }
+  }
+}
+
 function runSmoke() {
   assertExists("package.json")
+  assertExists("local-payload.txt")
   assertExists("plugin.json")
   assertExists(".claude-plugin/plugin.json")
   assertExists("skills/omgb/SKILL.md")
@@ -184,6 +229,14 @@ function runSmoke() {
 
   assertManifestIsSkillsOnly("plugin.json")
   assertManifestIsSkillsOnly(".claude-plugin/plugin.json")
+
+  const payloadItems = loadLocalPayloadManifest()
+  for (const item of payloadItems) {
+    assertExists(item.path)
+    if (existsSync(path.join(root, item.path))) {
+      assertNoSymlinks(item.path)
+    }
+  }
 
   const skillFiles = walkFiles(path.join(root, "skills"))
     .filter((file) => path.basename(file) === "SKILL.md")
