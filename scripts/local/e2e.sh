@@ -132,6 +132,25 @@ main() {
   fi
   ok "launcher emitted a valid 16-role agents JSON ($PROBE_CFG)"
 
+  step "APR fan-out launcher (dry-run)"
+  set +e
+  APR_OUT=$(bash "$ROOT/scripts/workflow/launch-omgb-fanout.sh" e2e-apr-probe "e2e APR cohort probe" --phase apr 2>&1)
+  APR_RC=$?
+  set -e
+  printf "%s\n" "$APR_OUT" >>"$LOG"
+  if [[ $APR_RC -ne 0 ]]; then
+    fail "launch-omgb-fanout.sh --phase apr dry-run failed with code $APR_RC"
+  fi
+  for role in code-reviewer security-reviewer performance-reviewer ux-reviewer architect; do
+    if ! printf "%s\n" "$APR_OUT" | grep -q "$role"; then
+      fail "APR cohort missing required role $role"
+    fi
+  done
+  if ! printf "%s\n" "$APR_OUT" | grep -q "Rerun with --launch to fork 5 parallel grok subprocesses"; then
+    fail "APR cohort did not declare exactly 5 parallel subprocesses"
+  fi
+  ok "APR fan-out plans the 5-role adversarial cohort"
+
   step "audit existing runs (informational)"
   set +e
   node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1

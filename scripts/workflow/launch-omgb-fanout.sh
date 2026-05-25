@@ -78,6 +78,7 @@ if [[ -z "$ROLES_CSV" ]]; then
     grounding)  ROLES_CSV="codebase-scout,researcher" ;;
     planning)   ROLES_CSV="planner,architect" ;;
     review)     ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer" ;;
+    apr)        ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect" ;;
     *)          echo "Unknown phase '$PHASE'. Pass --roles to specify the cohort explicitly." >&2; exit 1 ;;
   esac
 fi
@@ -170,9 +171,53 @@ else
   node "$STATE_IO" init "$SHORT_SLUG" "$TASK" "$PHASE" "$COHORT_ID" "$ROLES_CSV_JOINED" >/dev/null
 fi
 
+# APR (Adversarial Plan Review) per-role stances. When PHASE=apr each role
+# is a hostile defender of its domain — the plan must survive their attack
+# before Phase 3 starts.
+apr_stance_for_role() {
+  local role="$1"
+  case "$role" in
+    code-reviewer)        echo "Attack correctness, contract drift, partial implementations. Cite file:line where the plan will break." ;;
+    security-reviewer)    echo "Attack trust boundaries, secret/auth/input handling, supply-chain risks. Assume the input is hostile." ;;
+    performance-reviewer) echo "Attack hot paths, allocations, scaling assumptions. Ask 'what happens at 10x scale?'" ;;
+    ux-reviewer)          echo "Attack the gap between the literal request and the underlying need. Surface install/CLI flow regressions." ;;
+    architect)            echo "Attack coupling, leaky abstractions, structural debt. Ask 'is there a simpler design that meets the requirements?'" ;;
+    *)                    echo "Defend your domain. Be hostile. Weak findings die." ;;
+  esac
+}
+
 # Per-role prompt templates.
 prompt_for_role() {
   local role="$1"
+
+  if [[ "$PHASE" == "apr" ]]; then
+    local stance
+    stance="$(apr_stance_for_role "$role")"
+    cat <<EOP
+You are $role acting as an ADVERSARIAL DEFENDER in OMGB Phase 2.5 (Adversarial Plan Review) of run "$SHORT_SLUG".
+
+Task being planned: $TASK
+
+Your stance: $stance
+
+STRICT OUTPUT PROTOCOL:
+- Use AT MOST 2 read-only tool calls. Prefer 0 — attack the plan as stated.
+- Default posture is HOSTILE. Soft, hedged, or collegial findings are rejected.
+- Produce 3-7 numbered findings, each ≤3 sentences, each tagged with exactly one of: CONSTRAINT, RISK, ALTERNATIVE, BLOCKER.
+- End with a single verdict line: APPROVE | REQUEST CHANGES | BLOCK.
+- "looks good but..." is REQUEST CHANGES. No round-ups.
+- Emit ONLY the marker block below as your final message.
+
+### WORKER START $role
+<verdict line>
+1. [TAG] <finding ≤3 sentences>
+2. [TAG] <finding ≤3 sentences>
+...
+### WORKER END $role
+EOP
+    return
+  fi
+
   case "$role" in
     codebase-scout)
       cat <<EOP
