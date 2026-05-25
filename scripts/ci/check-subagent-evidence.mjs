@@ -15,6 +15,12 @@
 //   - Every activeRole in state.json has at least one Subagent block, and
 //   - Every reviewer verdict in review.md has a matching Subagent block, and
 //   - Any spawn_method:unavailable block is paired with a synthesis opt-in.
+//
+// Env vars:
+//   OMGB_SUBAGENT_STALL_MS — per-subagent stall threshold (default 600000
+//     ms). Subagents whose recorded duration exceeds this print a WARN
+//     line in the report. WARN-only; the audit exit code is unchanged.
+//     Stall is per-subagent, not per-launcher-run.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
@@ -348,13 +354,31 @@ function auditRun(slug) {
   // launcher can prove (the launcher itself forks the subprocesses).
   const fanoutTracePath = path.join(runDir, "fanout-trace.json")
   let fanoutStartsByRole = null
+  // Per-role duration map for the stall-warning pass below.
+  const roleDurationsMs = []
   if (existsSync(fanoutTracePath)) {
     try {
       const trace = JSON.parse(readText(fanoutTracePath))
       fanoutStartsByRole = new Map()
-      for (const entry of trace.roles ?? []) {
+      const cohorts = Array.isArray(trace.cohorts) ? trace.cohorts : []
+      const allRoles = []
+      // Newer multi-cohort layout: {slug, cohorts:[{roles:[...]}]}.
+      for (const c of cohorts) {
+        for (const r of c.roles ?? []) allRoles.push(r)
+      }
+      // Legacy single-cohort layout: {slug, roles:[...]}.
+      for (const r of trace.roles ?? []) allRoles.push(r)
+      for (const entry of allRoles) {
         if (entry?.role && entry?.started) {
           fanoutStartsByRole.set(entry.role, Date.parse(entry.started))
+        }
+        if (entry?.role && typeof entry.duration_ms === "number") {
+          roleDurationsMs.push({ role: entry.role, duration_ms: entry.duration_ms })
+        } else if (entry?.role && entry.started && entry.completed) {
+          const d = Date.parse(entry.completed) - Date.parse(entry.started)
+          if (!Number.isNaN(d)) {
+            roleDurationsMs.push({ role: entry.role, duration_ms: d })
+          }
         }
       }
     } catch {
@@ -470,6 +494,19 @@ function auditRun(slug) {
     })
   }
 
+  // stall-warning pattern ported from oh-my-openagent worktree
+  // 4218-stall-timeout-separation. Per-subagent only — overall launcher
+  // run time is unconstrained. WARN-only; does not affect exit code.
+  const STALL_THRESHOLD_MS = Number(process.env.OMGB_SUBAGENT_STALL_MS) || 600_000
+  const stallWarnings = []
+  for (const { role, duration_ms } of roleDurationsMs) {
+    if (duration_ms > STALL_THRESHOLD_MS) {
+      stallWarnings.push(
+        `subagent ${role} ran ${Math.round(duration_ms / 1000)}s — exceeds stall threshold ${STALL_THRESHOLD_MS / 1000}s`,
+      )
+    }
+  }
+
   const blocking = findings.filter((f) => f.severity === "high")
   const status = blocking.length === 0 ? (synthesisOptIn ? "synthesis-opt-in" : "passed") : "blocked"
 
@@ -481,6 +518,7 @@ function auditRun(slug) {
     spawned_roles: Array.from(blocksByRole.keys()),
     synthesis_opt_in: synthesisOptIn,
     findings,
+    stall_warnings: stallWarnings,
   }
 }
 
@@ -500,6 +538,11 @@ function printReport(report) {
     console.log("  findings:")
     for (const f of report.findings) {
       console.log(`    [${f.severity}] ${f.role}: ${f.message}`)
+    }
+  }
+  if (report.stall_warnings && report.stall_warnings.length > 0) {
+    for (const msg of report.stall_warnings) {
+      console.log(`  WARN: ${msg}`)
     }
   }
 }
