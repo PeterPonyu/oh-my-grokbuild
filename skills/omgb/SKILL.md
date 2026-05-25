@@ -508,12 +508,14 @@ Expected success markers:
 For end-to-end validation against the user's existing Grok login:
 
 ```bash
-scripts/local/e2e.sh
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh
 ```
 
 Expected success marker:
 
 - `[OMGB] e2e passed`
+
+For structural validation without the live model probe, use `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` and expect `[OMGB] structural e2e passed`.
 
 The E2E script reuses `~/.grok/auth.json`; it must not invoke `grok login`.
 

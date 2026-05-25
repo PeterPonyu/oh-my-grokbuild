@@ -12,7 +12,7 @@
 #   --force               Overwrite an existing payload.
 #
 # Side effects:
-#   - Writes evidence to .omc/evidence/install-<timestamp>.log.
+#   - Writes evidence to .omgb/evidence/install-<timestamp>.log.
 #   - Does not require sudo, network access, or package installs.
 #   - Does not reload Grok. Reload the Grok TUI manually after install.
 
@@ -24,7 +24,7 @@ DEFAULT_TARGET_ROOT="$HOME/.grok/plugins/local"
 TARGET_ROOT="$DEFAULT_TARGET_ROOT"
 MODE="copy"
 FORCE=0
-EVIDENCE_DIR="$ROOT/.omc/evidence"
+EVIDENCE_DIR="$ROOT/.omgb/evidence"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 mkdir -p "$EVIDENCE_DIR"
@@ -277,7 +277,8 @@ log "[OMGB] install ok at $TARGET"
 log "next steps:"
 log "  1. Reload Grok TUI (or /plugins + /skills) so the new mount is discovered"
 log "  2. Run: ./scripts/local/doctor.sh          (quick health check)"
-log "  3. Run: npm test && scripts/local/e2e.sh   (full verification)"
-log "  4. Inside Grok: /omgb <your task>"
-log "  5. After a run: ./scripts/workflow/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
-log "  6. See docs/WORKING-WITH-OTHER-AGENTS.md for hybrid team instructions"
+log "  3. Run: npm test && OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh   (structural verification)"
+log "  4. For full verification: OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh"
+log "  5. Inside Grok: /omgb <your task>"
+log "  6. After a run: ./scripts/workflow/export-omgb-handoff.sh <slug>  (share to Claude/Codex/etc.)"
+log "  7. See docs/WORKING-WITH-OTHER-AGENTS.md for hybrid team instructions"

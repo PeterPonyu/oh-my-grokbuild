@@ -35,7 +35,7 @@ Side effects:
 - Symlinks `~/.grok/skills/omgb/{SKILL.md, agents, roles}` into the repo so
   Grok auto-discovers the `omgb` skill from a normal `grok inspect`.
 - Re-running from a moved or re-cloned checkout heals stale mounts automatically.
-- Writes a timestamped log to `.omc/evidence/install-<ts>.log`.
+- Writes a timestamped log to `.omgb/evidence/install-<ts>.log`.
 
 Expected success markers in the install output:
 
@@ -47,7 +47,8 @@ Expected success markers in the install output:
 ```bash
 ./scripts/local/doctor.sh                  # quick health check (now drift-aware)
 npm test                                   # smoke + sanity
-./scripts/local/e2e.sh                     # asserts existing Grok login + mount + launcher JSON
+OMGB_E2E_ALLOW_HEADLESS_SKIP=1 ./scripts/local/e2e.sh  # structural: login + mount + launcher JSON
+OMGB_E2E_HEADLESS=1 ./scripts/local/e2e.sh              # full live probe
 ```
 
 **Tip:** After any repo move or re-clone, running `install-local.sh --force` from the new location + `doctor.sh` is the reliable way to heal the mount.
@@ -57,11 +58,12 @@ Expected success markers:
 - `Looks good. The mount points to *this* checkout ...` (from doctor)
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
-- `[OMGB] e2e passed`
+- `[OMGB] structural e2e passed` for structural mode
+- `[OMGB] e2e passed` for full headless mode
 
 If `~/.grok/auth.json` is missing, the e2e script will exit non-zero with
-`FAIL: missing or empty …`. That is the only auth-related failure case the
-installer surfaces.
+`FAIL: missing or empty …`. Full headless mode also exits non-zero if the live
+`grok -p` probe fails or does not return `OMGB_E2E_OK`.
 
 ## Step 4: reload Grok
 
@@ -106,7 +108,7 @@ rm -rf ~/.grok/skills/omgb
 ```
 
 Nothing else under `~/.grok/` is touched. The plugin never writes to
-project state outside `.grok/omgb/runs/` (gitignored) and `.omc/evidence/`
+project state outside `.grok/omgb/runs/` (gitignored) and `.omgb/evidence/`
 (gitignored).
 
 ## Machine-readable contract
@@ -126,12 +128,14 @@ For agents that prefer JSON:
     "mounted user skill at ~/.grok/skills/omgb",
     "[OMGB] smoke passed",
     "[OMGB] sanity passed",
+    "[OMGB] structural e2e passed",
     "[OMGB] e2e passed"
   ],
   "verify_commands": [
     "scripts/local/doctor.sh",
     "npm test",
-    "scripts/local/e2e.sh"
+    "OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh",
+    "OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh"
   ],
   "launch_command": "scripts/workflow/launch-omgb-team.sh <slug> \"<task>\" --launch",
   "audit_command": "node scripts/ci/validate.mjs --audit-run <slug>",

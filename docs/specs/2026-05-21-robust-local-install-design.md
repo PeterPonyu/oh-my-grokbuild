@@ -175,7 +175,7 @@ The design favors **explicitness and safety** over cleverness: the user sees exa
 
 Before the implementation PR is considered complete:
 
-- `npm test`, `scripts/local/e2e.sh`, and `node scripts/ci/validate.mjs --smoke --sanity` all pass with no regressions.
+- `npm test`, `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh`, and `node scripts/ci/validate.mjs --smoke --sanity` all pass with no regressions.
 - The exact user scenario works end-to-end:
   1. Fresh clone at location A → install → `/omgb` visible.
   2. Move (or second clone) to location B.

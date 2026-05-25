@@ -16,14 +16,14 @@ Before claiming completion, run:
 
 ```bash
 npm test          # smoke + sanity
-bash scripts/local/e2e.sh   # asserts ~/.grok/auth.json; refuses to grok login
+OMGB_E2E_HEADLESS=1 bash scripts/local/e2e.sh   # full E2E; refuses to grok login
 ```
 
 Expected markers:
 
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
-- `[OMGB] e2e passed`
+- `[OMGB] e2e passed` for full headless E2E
 
 ## Research Sources
 

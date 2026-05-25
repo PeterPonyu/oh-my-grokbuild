@@ -82,11 +82,11 @@ echo
 echo "=== Verification Summary ==="
 pass "All static and doctor checks passed for current tree"
 info "Next manual step (when ready): run the full relocation scenario in docs/REPO-RELOCATION-TEST.md"
-info "When that passes + e2e.sh passes, the robust install verification is complete."
+info "When that passes + full headless e2e passes, the robust install verification is complete."
 
 echo
-echo "To run the full e2e (requires auth):"
-echo "  scripts/local/e2e.sh"
+echo "To run the full e2e (requires auth and a live headless turn):"
+echo "  OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh"
 echo
 echo "To run the relocation test:"
 echo "  See docs/REPO-RELOCATION-TEST.md"
