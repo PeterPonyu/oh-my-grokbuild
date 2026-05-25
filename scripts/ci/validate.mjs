@@ -55,11 +55,17 @@ const requiredSkillPhrases = [
   "Phase 0: Intake and Resume",
   "Phase 1: Grounding and Research",
   "Phase 2: Planning and Staffing",
+  "Phase 2.5: Adversarial Plan Review",
   "Phase 3: Execution",
   "Phase 4: Verification",
   "Phase 5: Review",
   "Phase 6: Fix Loop",
   "Phase 7: Finalization",
+  "Execution Discipline",
+  "TDD Mandatory",
+  "Scenario Contract",
+  "Durable Notepad",
+  "Reviewer Gate",
   "Smoke and Sanity Contract",
 ]
 
@@ -445,12 +451,35 @@ function runSanity() {
   }
 
   assertNoBrandLeakInScripts()
+  assertAprRolesAreReadOnly()
 
   if (process.exitCode) {
     return
   }
 
   console.log("[OMGB] sanity passed")
+}
+
+// APR (Adversarial Plan Review) contract: the 5 hostile defenders must all
+// be read-only by capability. They attack the plan; they never mutate it.
+function assertAprRolesAreReadOnly() {
+  const aprRoles = [
+    "code-reviewer",
+    "security-reviewer",
+    "performance-reviewer",
+    "ux-reviewer",
+    "architect",
+  ]
+  for (const role of aprRoles) {
+    const toml = parseTomlSimple(readText(`roles/${role}.toml`))
+    if (toml.get("default_capability_mode") !== "read-only") {
+      fail(`APR role ${role} must be default_capability_mode = read-only; APR defenders never mutate state`)
+    }
+  }
+  const fanoutScript = readText("scripts/workflow/launch-omgb-fanout.sh")
+  if (!/apr\)\s*ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect"/.test(fanoutScript)) {
+    fail("launch-omgb-fanout.sh must declare the apr phase with exactly the 5 APR roles")
+  }
 }
 
 // Brand-leak guard: first-party runtime scripts must not write to .omc/ paths.
