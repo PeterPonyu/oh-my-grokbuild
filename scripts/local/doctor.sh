@@ -167,6 +167,14 @@ else
 fi
 
 echo
+info "Manifest cross-ref:"
+if node scripts/lib/doctor-manifest.mjs --print; then
+  pass "Manifest cross-ref complete"
+else
+  warn "Manifest cross-ref found issues (see above)"
+fi
+
+echo
 echo "Doctor summary:"
 if [[ $MOUNT_POINTS_TO_CURRENT -eq 1 && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]; then
   echo -e "${GREEN}Looks good. The mount points to *this* checkout. Reload the Grok TUI (or run /plugins + /skills), then try /omgb inside the TUI.${RESET}"
