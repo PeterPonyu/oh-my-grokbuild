@@ -12,7 +12,8 @@ desktop.ini
 *.swo
 *~
 
-# OMGB / OMC runtime state (per-machine, never source)
+# OMGB runtime state (per-machine, never source)
+.omgb/
 .omc/
 .grok/
 !.grok/omgb/runs/.keep

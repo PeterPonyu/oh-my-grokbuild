@@ -76,7 +76,7 @@ blockers:
 ## CI / Testing / E2E Expectations
 
 - The verifier consumes test-engineer output and re-runs commands as needed.
-- For E2E-affecting work, the verifier requires a passing `scripts/local/e2e.sh` trace.
+- For E2E-affecting work, the verifier requires a passing `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` trace for full E2E, or `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` only for structural validation.
 
 ## Interaction
 

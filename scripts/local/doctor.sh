@@ -159,7 +159,7 @@ else
 fi
 
 # 7. Recent install log (useful for support)
-LATEST_LOG="$(ls -t "$ROOT/.omc/evidence"/install-*.log 2>/dev/null | head -1 || true)"
+LATEST_LOG="$(ls -t "$ROOT/.omgb/evidence"/install-*.log 2>/dev/null | head -1 || true)"
 if [[ -n "$LATEST_LOG" ]]; then
   info "Most recent install log: $LATEST_LOG"
 else
@@ -182,7 +182,8 @@ if [[ $MOUNT_POINTS_TO_CURRENT -eq 1 && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]
   echo "Next commands you probably want:"
   echo "  node scripts/ci/validate.mjs --smoke"
   echo "  npm test"
-  echo "  scripts/local/e2e.sh"
+  echo "  OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh"
+  echo "  OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh   # full live probe"
   echo "  scripts/workflow/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
   echo "  cat docs/WORKING-WITH-OTHER-AGENTS.md           # hybrid team guide"
 else

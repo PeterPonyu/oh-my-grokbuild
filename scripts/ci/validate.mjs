@@ -440,12 +440,39 @@ function runSanity() {
   if (!skill.includes("[OMGB] e2e passed")) {
     fail("skill must document [OMGB] e2e passed marker")
   }
+  if (!skill.includes("[OMGB] structural e2e passed")) {
+    fail("skill must document [OMGB] structural e2e passed marker")
+  }
+
+  assertNoBrandLeakInScripts()
 
   if (process.exitCode) {
     return
   }
 
   console.log("[OMGB] sanity passed")
+}
+
+// Brand-leak guard: first-party runtime scripts must not write to .omc/ paths.
+// The .omc namespace belongs to oh-my-claudecode; oh-my-grokbuild writes its
+// own evidence under .omgb/. Peer-project mentions in research/changelog/prd
+// remain allowed because they document the broader ecosystem.
+function assertNoBrandLeakInScripts() {
+  const scriptDirs = ["scripts/local", "scripts/workflow"]
+  for (const dir of scriptDirs) {
+    const fullDir = path.join(root, dir)
+    if (!existsSync(fullDir)) continue
+    for (const entry of readdirSync(fullDir)) {
+      const rel = path.join(dir, entry)
+      const full = path.join(root, rel)
+      if (!statSync(full).isFile()) continue
+      if (!/\.(sh|mjs|js|cjs)$/.test(entry)) continue
+      const text = readText(rel)
+      if (/\.omc\//.test(text)) {
+        fail(`brand leak: ${rel} references .omc/ — first-party scripts must use .omgb/`)
+      }
+    }
+  }
 }
 
 async function runNamingSlopWarn() {
