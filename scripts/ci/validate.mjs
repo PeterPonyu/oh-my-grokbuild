@@ -454,6 +454,7 @@ function runSanity() {
   assertNoBrandLeakInScripts()
   assertAprRolesAreReadOnly()
   assertPlaceholderMarkerBlocks()
+  assertMultiPhaseFanoutSerialStartBlocks()
   assertHeadlessGateRejectsNonZeroExit()
 
   if (process.exitCode) {
@@ -529,6 +530,85 @@ function assertPlaceholderMarkerBlocks() {
         "placeholder-marker audit fixture: expected auditor to exit non-zero (blocked) " +
           "for a run with synthesized placeholder output, but it passed. " +
           "Placeholder findings must have severity=high to trigger the block.",
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// Multi-phase fanout serial-start fixture: a multi-cohort fanout-trace.json
+// where a mandatory-parallel phase (grounding) has subprocess starts >5s
+// apart must be blocked. This verifies the auditor reads cohorts[].roles
+// (not just the legacy top-level roles array) when building fanoutStartsByRole.
+function assertMultiPhaseFanoutSerialStartBlocks() {
+  const fixSlug = "fixture-multi-cohort-serial-must-block"
+  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const fixDir = path.join(runsRoot, fixSlug)
+  mkdirSync(fixDir, { recursive: true })
+  try {
+    // Multi-cohort fanout-trace: grounding phase roles start 10s apart (>5s = definitely serial).
+    writeFileSync(
+      path.join(fixDir, "fanout-trace.json"),
+      JSON.stringify({
+        slug: fixSlug,
+        cohorts: [
+          {
+            phase: "grounding",
+            cohort: "g1",
+            started: "2026-01-01T00:00:00Z",
+            completed: "2026-01-01T00:01:00Z",
+            roles: [
+              { role: "codebase-scout", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
+              { role: "researcher",     started: "2026-01-01T00:00:10Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
+            ],
+          },
+        ],
+        // Intentionally no top-level 'roles' array — only cohorts[].roles.
+      }),
+    )
+    // state.json: both grounding roles active, phase=complete
+    writeFileSync(
+      path.join(fixDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: [{ name: "grounding", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    // evidence.md: both roles have proper blocks with launcher-fanout and shared cohort
+    writeFileSync(
+      path.join(fixDir, "evidence.md"),
+      [
+        "## Subagent: codebase-scout",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START codebase-scout",
+        "real output",
+        "### WORKER END codebase-scout",
+        "",
+        "## Subagent: researcher",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:10Z",
+        "### WORKER START researcher",
+        "real output",
+        "### WORKER END researcher",
+      ].join("\n"),
+    )
+    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+
+    if (result.status === 0) {
+      fail(
+        "multi-cohort serial fanout fixture: expected auditor to exit non-zero (blocked) " +
+          "for a grounding phase where cohorts[].roles starts are 10s apart (>5s = definitely serial), " +
+          "but it passed. The auditor must read cohorts[].roles to build fanoutStartsByRole.",
       )
     }
   } finally {
