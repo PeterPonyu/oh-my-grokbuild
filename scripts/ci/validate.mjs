@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 import { spawnSync } from "node:child_process"
@@ -453,6 +453,7 @@ function runSanity() {
 
   assertNoBrandLeakInScripts()
   assertAprRolesAreReadOnly()
+  assertPlaceholderMarkerBlocks()
   assertHeadlessGateRejectsNonZeroExit()
 
   if (process.exitCode) {
@@ -481,6 +482,57 @@ function assertAprRolesAreReadOnly() {
   const fanoutScript = readText("scripts/workflow/launch-omgb-fanout.sh")
   if (!/apr\)\s*ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect"/.test(fanoutScript)) {
     fail("launch-omgb-fanout.sh must declare the apr phase with exactly the 5 APR roles")
+  }
+}
+
+// Placeholder-marker audit fixture: a run where the launcher synthesized a
+// placeholder block (missing real WORKER START/END output) must be blocked
+// by the auditor — not just warned. This asserts the severity is "high".
+function assertPlaceholderMarkerBlocks() {
+  const fixSlug = "fixture-placeholder-must-block"
+  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const fixDir = path.join(runsRoot, fixSlug)
+  mkdirSync(fixDir, { recursive: true })
+  try {
+    // state.json: one active role, phase=complete
+    writeFileSync(
+      path.join(fixDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["executor"],
+        phases: [{ name: "execution", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    // evidence.md: executor block that has the placeholder text (no real worker output)
+    writeFileSync(
+      path.join(fixDir, "evidence.md"),
+      [
+        "## Subagent: executor",
+        "- spawn_method: launcher-fanout",
+        "- phase: execution",
+        "- cohort: e1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START executor",
+        "(missing markers — raw output below)",
+        "some raw output here",
+        "### WORKER END executor",
+      ].join("\n"),
+    )
+    // review.md: minimal verdict
+    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+
+    if (result.status === 0) {
+      fail(
+        "placeholder-marker audit fixture: expected auditor to exit non-zero (blocked) " +
+          "for a run with synthesized placeholder output, but it passed. " +
+          "Placeholder findings must have severity=high to trigger the block.",
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
   }
 }
 

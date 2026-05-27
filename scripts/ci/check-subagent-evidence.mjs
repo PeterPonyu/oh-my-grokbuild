@@ -459,9 +459,9 @@ function auditRun(slug) {
         })
       } else if (b.has_placeholder_marker) {
         findings.push({
-          severity: "medium",
+          severity: "high",
           role,
-          message: `Subagent block for '${role}' has a placeholder marker — the launcher synthesized '(missing markers — raw output below)' because the subprocess returned without emitting real WORKER START/END content. Tighten the role prompt or raise --max-turns, then re-run.`,
+          message: `Subagent block for '${role}' has a placeholder marker — the launcher synthesized '(missing markers — raw output below)' because the subprocess returned without emitting real WORKER START/END content. This is a contract violation: real worker output is required. Tighten the role prompt or raise --max-turns, then re-run.`,
         })
       }
     }
