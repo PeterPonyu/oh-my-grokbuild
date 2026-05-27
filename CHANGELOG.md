@@ -2,7 +2,15 @@
 
 ## Unreleased
 
-## [0.7.2] - 2026-05-27
+## [0.7.3] - 2026-05-27
+
+### Audit cleanup + robust local install
+
+- Align `plugin.json` and `.claude-plugin/plugin.json` versions with `package.json` (closes #9).
+- Gitignore run artifacts: `omgb-handoff-*.md` and `local-payload.txt` (closes #10).
+- Promote the prior `## Unreleased` block describing the robust-install work to this release (closes #11). Note: `0.7.2` was already tagged 2026-05-21 for the state-io extraction, so the new work ships as `0.7.3`.
+- Path-safety guard in `install-local.sh` now uses `fs.realpathSync` after `path.resolve` to prevent symlink escape from the install boundary (closes #12).
+- README "Verification after install" section references `scripts/local/verify-robust-install.sh` (closes #13).
 
 ### Robust local development experience (major install/doctor improvements)
 
