@@ -44,7 +44,28 @@ resolve_path() {
 }
 
 resolve_logical_path() {
-  node -e 'const path = require("path"); process.stdout.write(path.resolve(process.argv[1]))' "$1"
+  # Resolve the logical (non-symlink) path first, then attempt realpathSync to
+  # follow any symlinks. If the path does not exist yet (ENOENT), fall back to
+  # realpathSync on the nearest existing parent so symlink traversal is still
+  # checked for the portion of the path that does exist.
+  node -e '
+    const path = require("path");
+    const fs = require("fs");
+    const logical = path.resolve(process.argv[1]);
+    function realpathOrParent(p) {
+      try {
+        return fs.realpathSync(p);
+      } catch (e) {
+        if (e.code === "ENOENT") {
+          const parent = path.dirname(p);
+          if (parent === p) return p; // reached filesystem root
+          return path.join(realpathOrParent(parent), path.basename(p));
+        }
+        throw e;
+      }
+    }
+    process.stdout.write(realpathOrParent(logical));
+  ' "$1"
 }
 
 validate_payload_item() {
