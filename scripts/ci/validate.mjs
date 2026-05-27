@@ -1,6 +1,7 @@
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
+import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import { findNamingSlop } from "../lib/naming-slop.mjs"
@@ -452,6 +453,7 @@ function runSanity() {
 
   assertNoBrandLeakInScripts()
   assertAprRolesAreReadOnly()
+  assertHeadlessGateRejectsNonZeroExit()
 
   if (process.exitCode) {
     return
@@ -479,6 +481,23 @@ function assertAprRolesAreReadOnly() {
   const fanoutScript = readText("scripts/workflow/launch-omgb-fanout.sh")
   if (!/apr\)\s*ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect"/.test(fanoutScript)) {
     fail("launch-omgb-fanout.sh must declare the apr phase with exactly the 5 APR roles")
+  }
+}
+
+// Headless gate self-test: verifies that the e2e.sh headless check requires
+// BOTH exit code 0 AND the expected token. A fake grok that prints the token
+// but exits non-zero must be rejected by the gate.
+function assertHeadlessGateRejectsNonZeroExit() {
+  const testScript = path.join(root, "scripts", "ci", "test-headless-gate.sh")
+  if (!existsSync(testScript)) {
+    fail("scripts/ci/test-headless-gate.sh is missing")
+    return
+  }
+  const result = spawnSync("bash", [testScript], { encoding: "utf8" })
+  if (result.status !== 0) {
+    fail(
+      `headless gate self-test failed:\n${result.stdout || ""}${result.stderr || ""}`,
+    )
   }
 }
 
