@@ -52,11 +52,18 @@ if [[ ! -f "$MISSION" || ! -f "$STATE" || ! -f "$EVIDENCE" ]]; then
   exit 1
 fi
 
-# Extract useful metadata
-PHASE="$(jq -r '.phase // "unknown"' "$STATE" 2>/dev/null || echo unknown)"
-QA="$(jq -r '.qaCycles // 0' "$STATE" 2>/dev/null || echo 0)"
-REVIEWS="$(jq -r '.reviewRounds // 0' "$STATE" 2>/dev/null || echo 0)"
-ACTIVE="$(jq -r '.active // false' "$STATE" 2>/dev/null || echo false)"
+# Extract useful metadata via Node (repo policy: JSON reading belongs in Node, not jq)
+read -r PHASE QA REVIEWS ACTIVE < <(node -e "
+  let s = {};
+  try { s = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')); } catch {}
+  const out = [
+    s.phase       ?? 'unknown',
+    s.qaCycles    ?? 0,
+    s.reviewRounds ?? 0,
+    s.active      ?? false,
+  ];
+  process.stdout.write(out.join(' ') + '\n');
+" "$STATE")
 NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Build the handoff using unquoted heredocs for proper expansion

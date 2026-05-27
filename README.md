@@ -49,7 +49,7 @@ The 16 roles are: `leader`, `intake-analyst`, `researcher`, `codebase-scout`,
 ## Install
 
 ### Prerequisites
-- Node.js (v18+) — the validator (`scripts/ci/validate.mjs`) is ESM.
+- Node.js (v20+) — the validator (`scripts/ci/validate.mjs`) is ESM.
 - A working `grok` CLI with an authenticated session (`~/.grok/auth.json` for e2e).
 - The repo cloned locally (this is the source of truth; the TUI loads via symlinks).
 

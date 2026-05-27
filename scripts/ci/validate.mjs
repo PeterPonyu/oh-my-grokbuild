@@ -1,6 +1,7 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "node:fs"
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
+import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import { findNamingSlop } from "../lib/naming-slop.mjs"
@@ -452,6 +453,9 @@ function runSanity() {
 
   assertNoBrandLeakInScripts()
   assertAprRolesAreReadOnly()
+  assertPlaceholderMarkerBlocks()
+  assertMultiPhaseFanoutSerialStartBlocks()
+  assertHeadlessGateRejectsNonZeroExit()
 
   if (process.exitCode) {
     return
@@ -479,6 +483,153 @@ function assertAprRolesAreReadOnly() {
   const fanoutScript = readText("scripts/workflow/launch-omgb-fanout.sh")
   if (!/apr\)\s*ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect"/.test(fanoutScript)) {
     fail("launch-omgb-fanout.sh must declare the apr phase with exactly the 5 APR roles")
+  }
+}
+
+// Placeholder-marker audit fixture: a run where the launcher synthesized a
+// placeholder block (missing real WORKER START/END output) must be blocked
+// by the auditor — not just warned. This asserts the severity is "high".
+function assertPlaceholderMarkerBlocks() {
+  const fixSlug = "fixture-placeholder-must-block"
+  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const fixDir = path.join(runsRoot, fixSlug)
+  mkdirSync(fixDir, { recursive: true })
+  try {
+    // state.json: one active role, phase=complete
+    writeFileSync(
+      path.join(fixDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["executor"],
+        phases: [{ name: "execution", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    // evidence.md: executor block that has the placeholder text (no real worker output)
+    writeFileSync(
+      path.join(fixDir, "evidence.md"),
+      [
+        "## Subagent: executor",
+        "- spawn_method: launcher-fanout",
+        "- phase: execution",
+        "- cohort: e1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START executor",
+        "(missing markers — raw output below)",
+        "some raw output here",
+        "### WORKER END executor",
+      ].join("\n"),
+    )
+    // review.md: minimal verdict
+    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+
+    if (result.status === 0) {
+      fail(
+        "placeholder-marker audit fixture: expected auditor to exit non-zero (blocked) " +
+          "for a run with synthesized placeholder output, but it passed. " +
+          "Placeholder findings must have severity=high to trigger the block.",
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// Multi-phase fanout serial-start fixture: a multi-cohort fanout-trace.json
+// where a mandatory-parallel phase (grounding) has subprocess starts >5s
+// apart must be blocked. This verifies the auditor reads cohorts[].roles
+// (not just the legacy top-level roles array) when building fanoutStartsByRole.
+function assertMultiPhaseFanoutSerialStartBlocks() {
+  const fixSlug = "fixture-multi-cohort-serial-must-block"
+  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const fixDir = path.join(runsRoot, fixSlug)
+  mkdirSync(fixDir, { recursive: true })
+  try {
+    // Multi-cohort fanout-trace: grounding phase roles start 10s apart (>5s = definitely serial).
+    writeFileSync(
+      path.join(fixDir, "fanout-trace.json"),
+      JSON.stringify({
+        slug: fixSlug,
+        cohorts: [
+          {
+            phase: "grounding",
+            cohort: "g1",
+            started: "2026-01-01T00:00:00Z",
+            completed: "2026-01-01T00:01:00Z",
+            roles: [
+              { role: "codebase-scout", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
+              { role: "researcher",     started: "2026-01-01T00:00:10Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
+            ],
+          },
+        ],
+        // Intentionally no top-level 'roles' array — only cohorts[].roles.
+      }),
+    )
+    // state.json: both grounding roles active, phase=complete
+    writeFileSync(
+      path.join(fixDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: [{ name: "grounding", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    // evidence.md: both roles have proper blocks with launcher-fanout and shared cohort
+    writeFileSync(
+      path.join(fixDir, "evidence.md"),
+      [
+        "## Subagent: codebase-scout",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START codebase-scout",
+        "real output",
+        "### WORKER END codebase-scout",
+        "",
+        "## Subagent: researcher",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:10Z",
+        "### WORKER START researcher",
+        "real output",
+        "### WORKER END researcher",
+      ].join("\n"),
+    )
+    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+
+    if (result.status === 0) {
+      fail(
+        "multi-cohort serial fanout fixture: expected auditor to exit non-zero (blocked) " +
+          "for a grounding phase where cohorts[].roles starts are 10s apart (>5s = definitely serial), " +
+          "but it passed. The auditor must read cohorts[].roles to build fanoutStartsByRole.",
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// Headless gate self-test: verifies that the e2e.sh headless check requires
+// BOTH exit code 0 AND the expected token. A fake grok that prints the token
+// but exits non-zero must be rejected by the gate.
+function assertHeadlessGateRejectsNonZeroExit() {
+  const testScript = path.join(root, "scripts", "ci", "test-headless-gate.sh")
+  if (!existsSync(testScript)) {
+    fail("scripts/ci/test-headless-gate.sh is missing")
+    return
+  }
+  const result = spawnSync("bash", [testScript], { encoding: "utf8" })
+  if (result.status !== 0) {
+    fail(
+      `headless gate self-test failed:\n${result.stdout || ""}${result.stderr || ""}`,
+    )
   }
 }
 
