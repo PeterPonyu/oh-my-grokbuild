@@ -197,6 +197,33 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
   )
 }
 
+function buildAgentsConfig(slug, rolesCsv, readonlyRolesCsv) {
+  const dir = runDir(slug)
+  mkdirSync(dir, { recursive: true })
+  const roles = String(rolesCsv || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean)
+  const readonlySet = new Set(
+    String(readonlyRolesCsv || "")
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean),
+  )
+  const config = {}
+  for (const role of roles) {
+    config[role] = {
+      name: role,
+      prompt_file: `agents/${role}.md`,
+      role: `roles/${role}.toml`,
+      permission_mode: readonlySet.has(role) ? "read-only" : "default",
+    }
+  }
+  const configPath = path.join(dir, "agents-config.json")
+  writeJson(configPath, config)
+  console.log(JSON.stringify({ op: "build-agents-config", slug, configPath, role_count: roles.length }))
+}
+
 function finalize(slug, keepActive) {
   const dir = runDir(slug)
   const statePath = path.join(dir, "state.json")
@@ -223,6 +250,7 @@ function usage(code = 1) {
   console.error("  state-io.mjs init <slug> <task> <phase> <cohort> <roles-csv>")
   console.error("  state-io.mjs append-cohort <slug> <phase> <cohort> <started-iso> <completed-iso> <trace-tmp-dir>")
   console.error("  state-io.mjs finalize <slug> [--keep-active]")
+  console.error("  state-io.mjs build-agents-config <slug> <roles-csv> <readonly-roles-csv>")
   process.exit(code)
 }
 
@@ -242,6 +270,10 @@ try {
     case "finalize":
       if (args.length < 2) usage()
       finalize(args[1], args.includes("--keep-active"))
+      break
+    case "build-agents-config":
+      if (args.length < 4) usage()
+      buildAgentsConfig(args[1], args[2], args[3])
       break
     case "--help":
     case "-h":
