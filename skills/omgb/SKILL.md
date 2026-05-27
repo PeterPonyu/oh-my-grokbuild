@@ -636,6 +636,15 @@ For structural validation without the live model probe, use `OMGB_E2E_ALLOW_HEAD
 
 The E2E script reuses `~/.grok/auth.json`; it must not invoke `grok login`.
 
+### Environment variables
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `OMGB_E2E_HEADLESS` | unset | Set to `1` to enable the live model probe in `scripts/local/e2e.sh`. |
+| `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (structural check only). |
+| `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis fallback. |
+| `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. WARN-only; does not change exit code. |
+
 ## Final Report Format
 
 Use this concise report shape:

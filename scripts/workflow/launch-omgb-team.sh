@@ -96,41 +96,32 @@ ln -sfn "$RUN_DIR_HOME" "$RUN_DIR_LINK"
 echo "[launch] canonical run dir: $RUN_DIR_HOME"
 echo "[launch] plugin-root link:  $RUN_DIR_LINK -> $RUN_DIR_HOME"
 
-# Build agents JSON
-{
-  echo "{"
-  first=1
-  for role in "${SELECTED[@]}"; do
-    if [[ ! -f "$ROOT/agents/$role.md" ]]; then
-      echo "[launch] FAIL: missing agents/$role.md" >&2
-      exit 1
-    fi
-    if [[ ! -f "$ROOT/roles/$role.toml" ]]; then
-      echo "[launch] FAIL: missing roles/$role.toml" >&2
-      exit 1
-    fi
-    mode="default"
-    if [[ "$READONLY_ROLES" == *" $role "* ]]; then
-      mode="read-only"
-    fi
-    [[ $first -eq 1 ]] || echo "  ,"
-    first=0
-    printf '  "%s": {\n' "$role"
-    printf '    "name": "%s",\n' "$role"
-    printf '    "prompt_file": "agents/%s.md",\n' "$role"
-    printf '    "role": "roles/%s.toml",\n' "$role"
-    printf '    "permission_mode": "%s"\n' "$mode"
-    printf '  }'
-  done
-  echo
-  echo "}"
-} > "$CONFIG"
+# Validate role files exist before delegating to state-io.
+for role in "${SELECTED[@]}"; do
+  if [[ ! -f "$ROOT/agents/$role.md" ]]; then
+    echo "[launch] FAIL: missing agents/$role.md" >&2
+    exit 1
+  fi
+  if [[ ! -f "$ROOT/roles/$role.toml" ]]; then
+    echo "[launch] FAIL: missing roles/$role.toml" >&2
+    exit 1
+  fi
+done
 
-# JSON validity check (no jq dependency)
-if ! node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$CONFIG"; then
-  echo "[launch] FAIL: generated $CONFIG is not valid JSON" >&2
-  exit 1
-fi
+# Build agents JSON via state-io.mjs (Node-for-JSON policy: bash never
+# constructs JSON by string concatenation).
+STATE_IO="$ROOT/scripts/lib/state-io.mjs"
+ROLES_CSV_JOINED="$(printf '%s,' "${SELECTED[@]}" | sed 's/,$//')"
+# Build readonly CSV: roles that appear in READONLY_ROLES string.
+READONLY_CSV=""
+for role in "${SELECTED[@]}"; do
+  if [[ "$READONLY_ROLES" == *" $role "* ]]; then
+    READONLY_CSV="${READONLY_CSV}${role},"
+  fi
+done
+READONLY_CSV="${READONLY_CSV%,}"
+
+node "$STATE_IO" build-agents-config "$SHORT_SLUG" "$ROLES_CSV_JOINED" "$READONLY_CSV" >/dev/null
 
 ROLE_COUNT="${#SELECTED[@]}"
 echo "[launch] wrote $CONFIG ($ROLE_COUNT roles)"
