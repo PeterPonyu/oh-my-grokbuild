@@ -55,11 +55,17 @@ const requiredSkillPhrases = [
   "Phase 0: Intake and Resume",
   "Phase 1: Grounding and Research",
   "Phase 2: Planning and Staffing",
+  "Phase 2.5: Adversarial Plan Review",
   "Phase 3: Execution",
   "Phase 4: Verification",
   "Phase 5: Review",
   "Phase 6: Fix Loop",
   "Phase 7: Finalization",
+  "Execution Discipline",
+  "TDD Mandatory",
+  "Scenario Contract",
+  "Durable Notepad",
+  "Reviewer Gate",
   "Smoke and Sanity Contract",
 ]
 
@@ -440,12 +446,62 @@ function runSanity() {
   if (!skill.includes("[OMGB] e2e passed")) {
     fail("skill must document [OMGB] e2e passed marker")
   }
+  if (!skill.includes("[OMGB] structural e2e passed")) {
+    fail("skill must document [OMGB] structural e2e passed marker")
+  }
+
+  assertNoBrandLeakInScripts()
+  assertAprRolesAreReadOnly()
 
   if (process.exitCode) {
     return
   }
 
   console.log("[OMGB] sanity passed")
+}
+
+// APR (Adversarial Plan Review) contract: the 5 hostile defenders must all
+// be read-only by capability. They attack the plan; they never mutate it.
+function assertAprRolesAreReadOnly() {
+  const aprRoles = [
+    "code-reviewer",
+    "security-reviewer",
+    "performance-reviewer",
+    "ux-reviewer",
+    "architect",
+  ]
+  for (const role of aprRoles) {
+    const toml = parseTomlSimple(readText(`roles/${role}.toml`))
+    if (toml.get("default_capability_mode") !== "read-only") {
+      fail(`APR role ${role} must be default_capability_mode = read-only; APR defenders never mutate state`)
+    }
+  }
+  const fanoutScript = readText("scripts/workflow/launch-omgb-fanout.sh")
+  if (!/apr\)\s*ROLES_CSV="code-reviewer,security-reviewer,performance-reviewer,ux-reviewer,architect"/.test(fanoutScript)) {
+    fail("launch-omgb-fanout.sh must declare the apr phase with exactly the 5 APR roles")
+  }
+}
+
+// Brand-leak guard: first-party runtime scripts must not write to .omc/ paths.
+// The .omc namespace belongs to oh-my-claudecode; oh-my-grokbuild writes its
+// own evidence under .omgb/. Peer-project mentions in research/changelog/prd
+// remain allowed because they document the broader ecosystem.
+function assertNoBrandLeakInScripts() {
+  const scriptDirs = ["scripts/local", "scripts/workflow"]
+  for (const dir of scriptDirs) {
+    const fullDir = path.join(root, dir)
+    if (!existsSync(fullDir)) continue
+    for (const entry of readdirSync(fullDir)) {
+      const rel = path.join(dir, entry)
+      const full = path.join(root, rel)
+      if (!statSync(full).isFile()) continue
+      if (!/\.(sh|mjs|js|cjs)$/.test(entry)) continue
+      const text = readText(rel)
+      if (/\.omc\//.test(text)) {
+        fail(`brand leak: ${rel} references .omc/ — first-party scripts must use .omgb/`)
+      }
+    }
+  }
 }
 
 async function runNamingSlopWarn() {

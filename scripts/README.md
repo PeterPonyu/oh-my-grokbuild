@@ -50,8 +50,8 @@ npm test                                          # = validate.mjs --smoke && --
 node scripts/ci/validate.mjs --audit-all          # bulk audit any completed runs
 
 # Before any release (needs ~/.grok/auth.json)
-scripts/local/e2e.sh
-OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh          # + live grok -p probe
+OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh  # structural check
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh              # + live grok -p probe
 
 # Drive an OMGB run
 scripts/workflow/launch-omgb-fanout.sh   <slug> "<task>" --launch

@@ -390,6 +390,46 @@ Advance when:
 - The plan names verification commands.
 - Subagent evidence blocks exist for every role activated in this phase.
 
+### Phase 2.5: Adversarial Plan Review (optional gate)
+
+Triggered when the user uses any of these keywords in their task — `rigorously`, `strictly`, `deeply`, `adversarial`, `debate`, `hostile review`, `apr` — OR when the launcher is invoked with `--apr`. Otherwise skipped.
+
+This is OMGB's plan-hardening gate. Five review-eligible roles are spawned in a single parallel cohort, each playing a hostile defender of its domain. They attack the plan produced in Phase 2 from independent angles. The leader then distills the surviving objections back into `tasks.json` BEFORE Phase 3 starts. No code is written until the plan has survived the gauntlet.
+
+**The 5 adversarial defenders** (all already exist in OMGB; all read-only by capability):
+
+| Role | Domain attacked | Stance |
+| --- | --- | --- |
+| `code-reviewer` | Correctness, contract drift, partial implementations | "Where will this break? Cite file:line." |
+| `security-reviewer` | Blast radius, auth/secret/input boundaries, supply chain | "What is the trust boundary? What if the input is hostile?" |
+| `performance-reviewer` | Hot paths, allocations, cold-start, scaling assumptions | "What happens at 10x scale? Where is the unmeasured assumption?" |
+| `ux-reviewer` | User intent vs literal request, install/CLI flow regressions | "Is this solving the literal ask or the underlying need?" |
+| `architect` | Coupling, leaky abstractions, structural debt, simpler alternatives | "Is there a simpler design that meets the requirements?" |
+
+**Execution**:
+
+1. The leader spawns the 5 roles in ONE parallel cohort (`cohort: apr-r1`, `phase: planning`). Each receives the full `tasks.json` plus `mission.md` and is instructed:
+   - Produce 3–7 numbered findings, each ≤3 sentences, each tied to a SPECIFIC task id or plan section.
+   - Required posture is HOSTILE: weak findings are rejected; pride is the enemy.
+   - Each finding declares one of: `CONSTRAINT` (the plan must respect this), `RISK` (mitigation required), `ALTERNATIVE` (consider this reframing), or `BLOCKER` (the plan cannot proceed until resolved).
+   - Verdict: `APPROVE` (no blocking findings), `REQUEST CHANGES` (findings must be addressed), `BLOCK` (re-plan required).
+2. Each reviewer's verdict and findings go into `review.md` under a `## APR Round <n>` header and into the standard `## Subagent: <role>` evidence block.
+3. The leader distills survivors into `tasks.json`:
+   - Every `CONSTRAINT` becomes a non-negotiable acceptance criterion on the relevant task.
+   - Every `RISK` becomes either a new task ("mitigation: …") OR an explicit acceptance criterion.
+   - Every `BLOCKER` halts Phase 3 until resolved or the user explicitly waives it in `mission.md`.
+   - Every `ALTERNATIVE` is recorded in `mission.md` under `## Considered Alternatives` with a one-line accept-or-reject rationale.
+4. The leader records the distillation count in `state.json` under `aprRounds` and proceeds to Phase 3 only when no `BLOCK` verdict remains unresolved.
+
+**Anti-patterns** (audited):
+
+- Synthesizing the 5 verdicts in one context. Each verdict MUST come from a real subagent spawn (same rule as Phase 5 Review).
+- Softening the hostile prompt. The adversarial posture IS the mechanism.
+- Including conceded findings in the distillation. Only survivors enter `tasks.json`.
+- Running APR from a worker. APR is leader-only; workers do not orchestrate it.
+
+If the trigger keywords are absent and the launcher did not request APR, the leader skips this phase silently (no evidence overhead).
+
 ### Phase 3: Execution
 
 1. Spawn `executor` to implement scoped tasks.
@@ -397,6 +437,7 @@ Advance when:
 3. Spawn `writer` when docs need updates.
 4. The leader updates `tasks.json` after each completed task.
 5. No worker may reduce scope to make tests pass.
+6. **Execution Discipline applies** (see section below). TDD-mandatory + scenario contract + durable notepad + reviewer gate are binding for every production change in this phase.
 
 Advance when:
 
@@ -461,6 +502,82 @@ spawn whose evidence block is in `evidence.md`.**
 5. Set `state.active` false and `phase: "complete"` only when verified.
 6. Report changed files, commands run, review verdicts, residual risks, and next optional actions.
 
+## Execution Discipline (TDD + Scenarios + Notepad + Reviewer Gate)
+
+Binding rules for Phase 3 (Execution), Phase 4 (Verification), and Phase 5 (Review). Each rule encodes a distinct binding contract — not narrative reinforcement.
+
+### TDD Mandatory (RED → GREEN → SURFACE)
+
+Every production change in this run follows this sequence:
+
+1. **RED**: `test-engineer` writes a failing test that exercises the target behavior. The leader captures the failing assertion message verbatim in the test-engineer's evidence block before any production code is touched.
+2. **GREEN**: `executor` makes the smallest change that flips the test green. The leader captures the new assertion (or `0 failing`) line.
+3. **SURFACE**: `verifier` exercises the real surface — CLI stdout, exit code, file diff, generated artifact, browser/Playwright output when available — and captures the artifact in `evidence.md`. Tests are the floor; the surface artifact is the ceiling. Asserting "tests pass" alone is NOT sufficient evidence.
+
+**Exemption whitelist** (only these are exempt from RED→GREEN; each must be justified in writing inside the executor's evidence block, one line max):
+
+- formatting-only
+- comment-only
+- version bump
+- rename-only (no behavior change)
+
+Unjustified exemption = the verifier MUST reject the change in Phase 4 and the leader returns to Phase 3.
+
+Parallelism rule: RED and GREEN of the SAME scenario MUST be serial within the same scenario. Independent scenarios may proceed in parallel cohorts.
+
+### Scenario Contract (binding)
+
+Before any code is touched in Phase 3, the planner (or, if planner already ran, the executor's first turn) declares 3 or more scenarios in `tasks.json` under each task's `scenarios` array. Each scenario MUST specify:
+
+- `id` — short stable id (`S1`, `S2`, …).
+- `class` — exactly one of: `happy`, `edge` (boundary / empty / malformed / concurrent), `regression` (adjacent surface still works).
+- `pass_condition` — a BINARY observable. "returns 200 and body matches schema X" is acceptable; "should work" is not.
+- `surface_artifact` — the concrete evidence source that proves it (e.g., `grok -p output`, `curl status+body`, `node script stdout`, `test exit code 0`, `diff of file X`).
+- `test_file_and_id` — the automated test file path plus test id that exercises this scenario, written test-first.
+
+Coverage rule: the 3+ scenarios MUST include at least one `happy`, one `edge`, and one `regression`. The verifier rejects the task if any of the three classes is missing.
+
+### Durable Notepad
+
+At Phase 3 start, the leader creates `.grok/omgb/runs/<task-slug>/notepad.md` with these sections initialized empty and only ever appended to (never rewritten):
+
+```text
+# OMGB Notepad — <one-line goal>
+Started: <ISO-8601 timestamp>
+
+## Plan (atomic steps, ordered)
+## Scenarios (the contract — copy of tasks.json scenarios)
+## Now (single step in progress)
+## Todo (remaining, ordered)
+## Findings (non-obvious facts with file:line refs)
+## Learnings (patterns / pitfalls for next turn)
+```
+
+The notepad is the leader's durable memory across turns and across resume. If the leader loses context (compaction, resume from another machine, model swap), the recovery action is: re-read the notepad, then continue. Workers do NOT write to the notepad — only the leader appends.
+
+TODO format inside the notepad uses this binding shape: `<path>: <action> for <scenario-id> — verify by <check>`. This encodes WHERE / WHY (which scenario it advances) / VERIFY. Exactly ONE step is `in_progress` at a time. The leader marks it `completed` immediately on finish — never batched.
+
+- GOOD pair: `src/foo.test.ts: write failing test for S2 — verify by RED with assertion msg` → `src/foo.ts: implement validator for S2 — verify by foo.test.ts GREEN + CLI exit 0`
+- BAD: "implement feature", "fix bug", "add tests later", or production code before its failing test → rewrite.
+
+### Reviewer Gate (binding)
+
+Phase 5 Review verdicts are BINDING, not advisory. The leader does not interpret them.
+
+- `APPROVE` = no blocking findings. The leader may advance to Phase 7.
+- `COMMENT` = non-blocking risks. Recorded in `review.md` but Phase 7 may proceed.
+- `REQUEST CHANGES` = blocking. Phase 7 is gated until Phase 6 + re-review.
+- `"looks good but…"` or any hedged approval = REQUEST CHANGES. Hedged approvals are rejection by contract; the leader does NOT round them up to APPROVE.
+
+Reviewer-gate trigger expansion: the gate fires automatically (not just when keywords appear) when ANY of the following are true:
+
+- The task touched 3 or more files.
+- The task ran 20 or more leader turns.
+- The task's category is `refactor`, `migration`, `performance`, `security`, or `release`.
+- The user used any of the trigger keywords (`rigorously`, `strictly`, `deeply`, `carefully`).
+
+Loop until at least one reviewer issues `APPROVE` unconditionally. Stop and surface a blocker after three review rounds on the same item (already documented in Phase 5).
+
 ## Headless and Resume Hints
 
 When invoking Grok from a shell for an OMGB run, prefer a named session with
@@ -508,12 +625,14 @@ Expected success markers:
 For end-to-end validation against the user's existing Grok login:
 
 ```bash
-scripts/local/e2e.sh
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh
 ```
 
 Expected success marker:
 
 - `[OMGB] e2e passed`
+
+For structural validation without the live model probe, use `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` and expect `[OMGB] structural e2e passed`.
 
 The E2E script reuses `~/.grok/auth.json`; it must not invoke `grok login`.
 

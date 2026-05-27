@@ -44,7 +44,7 @@ Prove that after moving (or re-cloning) the oh-my-grokbuild source tree, running
    ```
 
    Expected:
-   - In the install log (`.omc/evidence/install-*.log`) you should see lines like:
+   - In the install log (`.omgb/evidence/install-*.log`) you should see lines like:
      ```
      [OMGB] Drift detected
      Previous user-skill mount pointed at: /old/path/.../skills/omgb/SKILL.md

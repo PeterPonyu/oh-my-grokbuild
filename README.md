@@ -33,7 +33,7 @@ agents/ROLE-INDEX.md              # thin index (deliberately not AGENTS.md)
 agents/<role>.md                  # 16 detailed Grok-native agent prompts
 roles/<role>.toml                 # 16 Grok-native capability configs
 scripts/ci/validate.mjs              # smoke + sanity validator
-scripts/local/e2e.sh                    # end-to-end probe against existing login
+scripts/local/e2e.sh                    # E2E harness; set mode env for pass marker
 scripts/local/install-local.sh          # local install into ~/.grok/plugins/local
 docs/research/                    # grounded research notes
 prd.json                          # task PRD with acceptance criteria
@@ -62,7 +62,7 @@ scripts/local/install-local.sh --force
 - Runs `node scripts/ci/validate.mjs --smoke` as a mandatory preflight.
 - Copies the minimal runtime payload declared in `local-payload.txt` into `~/.grok/plugins/local/oh-my-grokbuild`.
 - Creates (or refreshes) the user-skill mount at `~/.grok/skills/omgb` so that `/omgb` becomes immediately invocable.
-- Logs everything under `.omc/evidence/install-*.log`.
+- Logs everything under `.omgb/evidence/install-*.log`.
 
 **No sudo, no network, no `npm install` on the target machine.**
 
@@ -83,7 +83,8 @@ Reload or restart the Grok Build TUI (or run `/plugins` + `/skills` inside it) s
 node scripts/ci/validate.mjs --smoke
 node scripts/ci/validate.mjs --sanity
 npm test
-scripts/local/e2e.sh          # requires prior `grok login`
+OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh  # structural check
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh              # full live check
 scripts/local/verify-robust-install.sh   # validates payload, symlinks, and drift detection
 ```
 
@@ -115,7 +116,7 @@ grok --resume "omgb-<task-slug>"
 
 ```bash
 npm test                                       # runs smoke and sanity
-scripts/local/e2e.sh                                 # asserts existing Grok login + payload + launcher dry-run
+OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh  # structural: login + payload + launcher dry-run
 node scripts/ci/validate.mjs --audit-run <slug>   # gate before finalization of a run
 node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/runs/<slug>
 ```
@@ -127,8 +128,8 @@ node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/
 | `npm run smoke` (`validate.mjs --smoke`) | none | Plugin layout: SKILL.md count, plugin manifests, agents/ and roles/ counts, no forbidden top-level dirs | Every commit / PR (CI) |
 | `npm run sanity` (`validate.mjs --sanity`) | none | Same as smoke + role frontmatter integrity + capability-mode partition + research docs + `[OMGB]` markers + ROLE-INDEX content | Every commit / PR (CI) |
 | `scripts/local/doctor.sh` | reads `~/.grok/` | Node version, grok CLI, auth.json, user-skill mount, 16-pair role symmetry, launcher dry-run validity | After install / when `/omgb` misbehaves |
-| `scripts/local/e2e.sh` | reads `~/.grok/auth.json` | All of smoke + grok inspect + payload + user-skill mount + grok inspect lists `omgb` + launcher dry-run JSON validity + informational audit-all | After install, before release |
-| `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as e2e + a live model probe returning `OMGB_E2E_OK` | Optional release gate (consumes a Grok turn) |
+| `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` | reads `~/.grok/auth.json` | All of smoke + grok inspect + payload + user-skill mount + grok inspect lists `omgb` + launcher dry-run JSON validity + informational audit-all, but no live model probe | After install / structural check |
+| `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as structural e2e + a live model probe returning `OMGB_E2E_OK` | Full release gate (consumes a Grok turn) |
 | `validate.mjs --audit-run <slug>` | reads `~/.grok/sessions/` | Each `state.json.activeRoles` has a `## Subagent:` block with valid spawn_method, worker markers, phase, cohort; spawn timing **cross-checked against the Grok session transcript** (events.jsonl); review.md verdicts come from real spawns | Inside a Grok run before Finalization; CI on any merged run dir |
 | `validate.mjs --audit-all` | reads `~/.grok/sessions/` | Same as audit-run but across every `.grok/omgb/runs/<slug>/` | Periodic CI sweep |
 
@@ -149,7 +150,8 @@ Expected success markers:
 
 - `[OMGB] smoke passed`
 - `[OMGB] sanity passed`
-- `[OMGB] e2e passed`
+- `[OMGB] structural e2e passed` for structural mode
+- `[OMGB] e2e passed` for full headless mode
 - `[OMGB] audit passed` (per run, or `[OMGB] audit passed (synthesis opt-in)` when `OMGB_ALLOW_SYNTHESIS: true` is set in `mission.md`)
 
 ## Mandatory Subagent Spawning (v0.2.0+)

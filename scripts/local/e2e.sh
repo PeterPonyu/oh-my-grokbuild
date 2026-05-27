@@ -12,16 +12,17 @@
 #   3. `grok inspect` exits cleanly (with code 0 or the documented diagnostic code).
 #   4. The plugin payload at the local install path contains a discoverable
 #      omgb skill.
-#   5. Optional headless reachability probe with `grok -p` is only run when
-#      OMGB_E2E_HEADLESS=1 is exported; otherwise the script reports SKIP.
+#   5. Headless reachability probe with `grok -p` must pass for a full E2E.
+#      Set OMGB_E2E_ALLOW_HEADLESS_SKIP=1 only for an explicit structural check;
+#      that mode never prints the full E2E pass marker.
 #
 # On success, prints "[OMGB] e2e passed" and writes a trace to
-# .omc/evidence/e2e-<timestamp>.log.
+# .omgb/evidence/e2e-<timestamp>.log.
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EVIDENCE_DIR="$ROOT/.omc/evidence"
+EVIDENCE_DIR="$ROOT/.omgb/evidence"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$EVIDENCE_DIR/e2e-$TIMESTAMP.log"
 LOCAL_INSTALL="${OMGB_LOCAL_INSTALL:-$HOME/.grok/plugins/local/oh-my-grokbuild}"
@@ -131,6 +132,25 @@ main() {
   fi
   ok "launcher emitted a valid 16-role agents JSON ($PROBE_CFG)"
 
+  step "APR fan-out launcher (dry-run)"
+  set +e
+  APR_OUT=$(bash "$ROOT/scripts/workflow/launch-omgb-fanout.sh" e2e-apr-probe "e2e APR cohort probe" --phase apr 2>&1)
+  APR_RC=$?
+  set -e
+  printf "%s\n" "$APR_OUT" >>"$LOG"
+  if [[ $APR_RC -ne 0 ]]; then
+    fail "launch-omgb-fanout.sh --phase apr dry-run failed with code $APR_RC"
+  fi
+  for role in code-reviewer security-reviewer performance-reviewer ux-reviewer architect; do
+    if ! printf "%s\n" "$APR_OUT" | grep -q "$role"; then
+      fail "APR cohort missing required role $role"
+    fi
+  done
+  if ! printf "%s\n" "$APR_OUT" | grep -q "Rerun with --launch to fork 5 parallel grok subprocesses"; then
+    fail "APR cohort did not declare exactly 5 parallel subprocesses"
+  fi
+  ok "APR fan-out plans the 5-role adversarial cohort"
+
   step "audit existing runs (informational)"
   set +e
   node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
@@ -190,19 +210,27 @@ main() {
     # and allow a generous turn budget so noisy MCP retries do not starve
     # the actual reply.
     set +e
-    "$GROK_BIN" --cwd "$ROOT" --no-alt-screen --no-subagents --no-memory \
+    HEADLESS_OUTPUT=$("$GROK_BIN" --cwd "$ROOT" --no-alt-screen --no-subagents --no-memory \
       --no-plan --disable-web-search --max-turns 20 \
       --output-format plain \
       -p "Reply with the literal token OMGB_E2E_OK and nothing else." \
-      >>"$LOG" 2>&1
+      2>&1)
     HEADLESS_RC=$?
     set -e
-    if ! grep -q "OMGB_E2E_OK" "$LOG"; then
-      fail "grok headless probe did not echo the expected token (exit $HEADLESS_RC)"
+    printf "%s\n" "$HEADLESS_OUTPUT" >>"$LOG"
+    if [[ $HEADLESS_RC -ne 0 ]]; then
+      fail "grok headless probe exited with code $HEADLESS_RC"
+    fi
+    if ! printf "%s\n" "$HEADLESS_OUTPUT" | grep -qx "OMGB_E2E_OK"; then
+      fail "grok headless probe did not echo the expected token"
     fi
     ok "headless probe returned OMGB_E2E_OK (exit $HEADLESS_RC)"
+  elif [[ "${OMGB_E2E_ALLOW_HEADLESS_SKIP:-0}" = "1" ]]; then
+    log "SKIP: headless reachability (explicit structural mode via OMGB_E2E_ALLOW_HEADLESS_SKIP=1)"
+    log "[OMGB] structural e2e passed (headless skipped)"
+    return 0
   else
-    log "SKIP: headless reachability (set OMGB_E2E_HEADLESS=1 to run a live model probe)"
+    fail "headless reachability was not run; set OMGB_E2E_HEADLESS=1 for full E2E or OMGB_E2E_ALLOW_HEADLESS_SKIP=1 for structural-only validation"
   fi
 
   log "[OMGB] e2e passed"

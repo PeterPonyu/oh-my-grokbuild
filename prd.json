@@ -62,7 +62,7 @@
         "scripts/local/e2e.sh exists and is executable.",
         "scripts/local/e2e.sh asserts ~/.grok/auth.json exists before continuing and refuses to log in for the user.",
         "scripts/local/e2e.sh prints [OMGB] e2e passed only when grok inspect, a headless grok -p reachability probe, and the plugin payload check all succeed.",
-        "An E2E run on this machine produces a trace at .omc/evidence/e2e-<timestamp>.log that contains [OMGB] e2e passed."
+        "An E2E run on this machine produces a trace at .omgb/evidence/e2e-<timestamp>.log that contains [OMGB] e2e passed."
       ],
       "passes": true
     },
@@ -84,7 +84,7 @@
         "The local repository is a git repository with a clean working tree after publish.",
         "A public GitHub repository PeterPonyu/oh-my-grokbuild exists and is the configured origin.",
         "The remote main branch contains the v0.1.0 commit and an annotated tag v0.1.0.",
-        ".omc/evidence/publish.log records the gh CLI commands and the resulting remote URL."
+        ".omgb/evidence/publish.log records the gh CLI commands and the resulting remote URL."
       ],
       "passes": true
     }
