@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.7.2] - 2026-05-27
+
 ### Robust local development experience (major install/doctor improvements)
 
 - Added `local-payload.txt` as the single source of truth for what gets copied into `~/.grok/plugins/local/oh-my-grokbuild`.

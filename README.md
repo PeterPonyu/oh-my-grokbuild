@@ -84,6 +84,7 @@ node scripts/ci/validate.mjs --smoke
 node scripts/ci/validate.mjs --sanity
 npm test
 scripts/local/e2e.sh          # requires prior `grok login`
+scripts/local/verify-robust-install.sh   # validates payload, symlinks, and drift detection
 ```
 
 For the relocation / "I moved my clone" scenario, see `docs/REPO-RELOCATION-TEST.md`.

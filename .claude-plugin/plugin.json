@@ -1,6 +1,6 @@
 {
   "name": "oh-my-grokbuild",
-  "version": "0.1.0",
+  "version": "0.7.2",
   "description": "Compatibility manifest for hosts that discover Claude-style markdown skills.",
   "skills": [
     "../skills/omgb"
