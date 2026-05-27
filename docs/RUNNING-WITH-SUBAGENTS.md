@@ -142,6 +142,13 @@ with `spawn_method: unavailable` and a `Synthesis Justification:` line. The
 auditor will label the run as `(synthesis opt-in)` rather than passing it as a
 real-spawn run. This is honest, non-default, and traceable.
 
+## Environment Variables
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis as a fallback when subagents are unavailable. |
+| `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. Subagents whose recorded duration exceeds this value print a `WARN` line in the audit report. WARN-only; does not change exit code. |
+
 ## Important Notes
 
 - Not every host / context supports `--agents` equally well. If your environment has `--no-subagents` forced, OMGB falls back to sequential execution (still fully functional).

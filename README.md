@@ -154,6 +154,15 @@ Expected success markers:
 - `[OMGB] e2e passed` for full headless mode
 - `[OMGB] audit passed` (per run, or `[OMGB] audit passed (synthesis opt-in)` when `OMGB_ALLOW_SYNTHESIS: true` is set in `mission.md`)
 
+### Environment variables
+
+| Env var | Default | Effect |
+| --- | --- | --- |
+| `OMGB_E2E_HEADLESS` | unset | Set to `1` to enable the live model probe in `scripts/local/e2e.sh` (consumes a real Grok turn). |
+| `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (structural check only). |
+| `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis as a fallback when subagents are unavailable. |
+| `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. Subagents whose recorded duration exceeds this value print a `WARN` line in the audit report. WARN-only; does not change exit code. |
+
 ## Mandatory Subagent Spawning (v0.2.0+)
 
 OMGB does not allow the leader to "act as" reviewers. Every role activation
