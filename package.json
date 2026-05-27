@@ -7,7 +7,7 @@
   "scripts": {
     "smoke": "node scripts/ci/validate.mjs --smoke",
     "sanity": "node scripts/ci/validate.mjs --sanity",
-    "test": "npm run smoke && npm run sanity"
+    "test": "npm run smoke && npm run sanity && node scripts/ci/test-state-io.mjs"
   },
   "keywords": [
     "grok",
