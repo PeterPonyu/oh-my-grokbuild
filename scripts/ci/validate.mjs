@@ -85,7 +85,7 @@ const requiredTomlKeys = [
 ]
 
 const allowedCapabilityModes = new Set(["read-only", "all"])
-const allowedReasoningEfforts = new Set(["low", "medium", "high"])
+const allowedReasoningEfforts = new Set(["low", "medium", "high", "xhigh", "max"])
 
 const forbiddenManifestKeys = new Set([
   "hooks",
@@ -374,7 +374,7 @@ function runSanity() {
     }
     const reasoning = tomlMap.get("reasoning_effort")
     if (!allowedReasoningEfforts.has(reasoning)) {
-      fail(`${rolePath} reasoning_effort must be low|medium|high, got ${reasoning}`)
+      fail(`${rolePath} reasoning_effort must be low|medium|high|xhigh|max, got ${reasoning}`)
     }
   }
 
