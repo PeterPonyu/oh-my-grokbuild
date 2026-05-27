@@ -1,6 +1,6 @@
 {
   "name": "oh-my-grokbuild",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "A skills-only Grok Build plugin exposing one persistent team orchestration entry point: /omgb.",
   "skills": [
     "skills/omgb"

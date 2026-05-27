@@ -17,9 +17,8 @@ desktop.ini
 .grok/
 !.grok/omgb/runs/.keep
 
-# Run artifacts (export handoffs, local payload snapshot)
+# Run artifacts (export handoffs)
 omgb-handoff-*.md
-local-payload.txt
 
 # Local scratch / temp
 scratch/
