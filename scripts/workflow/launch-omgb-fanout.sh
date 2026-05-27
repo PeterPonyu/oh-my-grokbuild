@@ -288,6 +288,14 @@ for role in "${ROLES[@]}"; do
   (
     echo "$BASHPID" > "$TRACE_TMP/$role.pid"
     date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.start"
+
+    # Read effort from the role's toml (v0.9.0 effort routing)
+    effort=$(grep -E '^(reasoning_effort|effort)\s*=' "$ROOT/roles/$role.toml" 2>/dev/null | head -1 | sed -E 's/.*= *["'\'']?([^"'\'' ]+)["'\'']?.*/\1/' | tr -d '\r')
+    effort_flag=""
+    if [[ -n "$effort" ]]; then
+      effort_flag="--effort $effort"
+    fi
+
     set +e
     "$GROK_BIN" \
       --cwd "$ROOT" \
@@ -296,6 +304,7 @@ for role in "${ROLES[@]}"; do
       --permission-mode auto \
       --max-turns "$MAX_TURNS" \
       --output-format plain \
+      $effort_flag \
       --rules "MCPs (huggingface, etc.) are unreachable; do not invoke or retry MCP tools. Emit the WORKER START/END markers as your FINAL message. Stop after emitting them." \
       -p "$prompt" \
       > "$TRACE_TMP/$role.out" 2> "$TRACE_TMP/$role.err"
