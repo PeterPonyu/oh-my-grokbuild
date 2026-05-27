@@ -3,6 +3,8 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 
+import { findNamingSlop } from "../lib/naming-slop.mjs"
+
 const root = fileURLToPath(new URL("../..", import.meta.url))
 
 const requiredRoles = [
@@ -446,6 +448,19 @@ function runSanity() {
   console.log("[OMGB] sanity passed")
 }
 
+async function runNamingSlopWarn() {
+  // Advisory: ports oh-my-claudecode pre-tool-enforcer pattern set
+  // (no hook surface in grokbuild, so this runs at audit time).
+  // WARN-only; does not change exit code.
+  const roots = ["agents", "roles", "scripts", "skills", "docs"].map((r) =>
+    path.join(root, r),
+  )
+  const findings = await findNamingSlop(roots)
+  for (const { path: p, pattern } of findings) {
+    console.log(`WARN: naming-slop ${pattern} matched ${path.relative(root, p)}`)
+  }
+}
+
 const rawArgs = process.argv.slice(2)
 const args = new Set(rawArgs)
 
@@ -472,6 +487,10 @@ if (args.has("--smoke")) {
 
 if (args.has("--sanity")) {
   runSanity()
+}
+
+if (args.has("--smoke") || args.has("--sanity")) {
+  await runNamingSlopWarn()
 }
 
 async function runAudit(auditArgs) {
