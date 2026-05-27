@@ -129,7 +129,13 @@ elif [[ -e "$RUN_DIR_LINK" ]]; then
 fi
 ln -sfn "$RUN_DIR_HOME" "$RUN_DIR_LINK"
 
-COHORT_ID="${PHASE:0:1}1"
+_existing_count=$(node -e "
+  const p=process.argv[1]; const ph=process.argv[2];
+  const t=require('fs').existsSync(p)?JSON.parse(require('fs').readFileSync(p,'utf8')):{};
+  const c=(t.cohorts||[]).filter(c=>c.phase===ph).length;
+  process.stdout.write(String(c+1));
+" "$RUN_DIR/fanout-trace.json" "$PHASE" 2>/dev/null || echo 1)
+COHORT_ID="${PHASE:0:1}${_existing_count}"
 RUN_STARTED_ISO="$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")"
 
 echo "[fanout] phase:        $PHASE"
