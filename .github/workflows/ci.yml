@@ -47,7 +47,7 @@ jobs:
           FAKE
           chmod +x "$HOME/.grok/bin/grok"
           export PATH="$HOME/.grok/bin:$PATH"
-          touch "$HOME/.grok/auth.json"
+          printf '{}\n' > "$HOME/.grok/auth.json"
           scripts/local/doctor.sh
       - name: Structural e2e with fake Grok CLI
         run: |
