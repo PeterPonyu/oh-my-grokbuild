@@ -56,7 +56,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # (validate.mjs --audit-run) reads <plugin>/.grok/omgb/runs/<slug>/. We make
 # the home location canonical and the plugin-root path a symlink so both
 # sides see the same files.
-RUN_DIR_HOME="$HOME/.grok/omgb/runs/$SHORT_SLUG"
+RUNS_ROOT="${OMGB_RUNS_ROOT:-$HOME/.grok/omgb/runs}"
+RUN_DIR_HOME="$RUNS_ROOT/$SHORT_SLUG"
 RUN_DIR_LINK="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
 RUN_DIR="$RUN_DIR_HOME"
 CONFIG="$RUN_DIR/agents-config.json"

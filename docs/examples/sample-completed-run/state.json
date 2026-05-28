@@ -1,0 +1,20 @@
+{
+  "mode": "omgb",
+  "active": false,
+  "phase": "complete",
+  "startedAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:01:00.000Z",
+  "taskSlug": "sample-completed-run",
+  "activeRoles": ["codebase-scout", "researcher"],
+  "qaCycles": 1,
+  "reviewRounds": 1,
+  "blockers": [],
+  "phases": [
+    {
+      "name": "grounding",
+      "started": "2026-01-01T00:00:00.000Z",
+      "completed": "2026-01-01T00:01:00.000Z",
+      "duration_ms": 60000
+    }
+  ]
+}

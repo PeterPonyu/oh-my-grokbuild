@@ -29,6 +29,10 @@ LOCAL_INSTALL="${OMGB_LOCAL_INSTALL:-$HOME/.grok/plugins/local/oh-my-grokbuild}"
 AUTH_FILE="$HOME/.grok/auth.json"
 
 mkdir -p "$EVIDENCE_DIR"
+PROBE_RUNS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/omgb-e2e-runs.XXXXXX")"
+cleanup_probe_runs() { rm -rf "$PROBE_RUNS_ROOT"; }
+trap cleanup_probe_runs EXIT
+export OMGB_RUNS_ROOT="$PROBE_RUNS_ROOT"
 
 log() {
   printf "%s %s\n" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"
@@ -58,6 +62,25 @@ validate_payload_item() {
       fail "unsafe local-payload.txt entry: $1"
       ;;
   esac
+}
+
+run_headless_probe() {
+  set +e
+  HEADLESS_OUTPUT=$("$GROK_BIN" --cwd "$ROOT" --no-alt-screen --no-subagents --no-memory \
+    --no-plan --disable-web-search --max-turns 20 \
+    --output-format plain \
+    -p "Reply with the literal token OMGB_E2E_OK and nothing else." \
+    2>&1)
+  HEADLESS_RC=$?
+  set -e
+  printf "%s\n" "$HEADLESS_OUTPUT" >>"$LOG"
+  if [[ $HEADLESS_RC -ne 0 ]]; then
+    fail "grok headless probe exited with code $HEADLESS_RC"
+  fi
+  if ! printf "%s\n" "$HEADLESS_OUTPUT" | grep -qx "OMGB_E2E_OK"; then
+    fail "grok headless probe did not echo the expected token"
+  fi
+  ok "headless probe returned OMGB_E2E_OK (exit $HEADLESS_RC)"
 }
 
 resolve_grok() {
@@ -126,7 +149,7 @@ main() {
   if [[ $LAUNCH_RC -ne 0 ]]; then
     fail "launch-omgb-team.sh dry-run failed with code $LAUNCH_RC"
   fi
-  PROBE_CFG="$ROOT/.grok/omgb/runs/e2e-team-probe/agents-config.json"
+  PROBE_CFG="$OMGB_RUNS_ROOT/e2e-team-probe/agents-config.json"
   if ! node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$PROBE_CFG" >>"$LOG" 2>&1; then
     fail "launcher produced JSON but it does not contain exactly 16 roles"
   fi
@@ -204,27 +227,7 @@ main() {
 
   step "headless reachability"
   if [[ "${OMGB_E2E_HEADLESS:-0}" = "1" ]]; then
-    # Grok defaults to spawning subagents and may attempt background MCP
-    # connections, which inflates the turn count for trivially small prompts.
-    # Pin --no-subagents and --no-memory, disable web search and plan mode,
-    # and allow a generous turn budget so noisy MCP retries do not starve
-    # the actual reply.
-    set +e
-    HEADLESS_OUTPUT=$("$GROK_BIN" --cwd "$ROOT" --no-alt-screen --no-subagents --no-memory \
-      --no-plan --disable-web-search --max-turns 20 \
-      --output-format plain \
-      -p "Reply with the literal token OMGB_E2E_OK and nothing else." \
-      2>&1)
-    HEADLESS_RC=$?
-    set -e
-    printf "%s\n" "$HEADLESS_OUTPUT" >>"$LOG"
-    if [[ $HEADLESS_RC -ne 0 ]]; then
-      fail "grok headless probe exited with code $HEADLESS_RC"
-    fi
-    if ! printf "%s\n" "$HEADLESS_OUTPUT" | grep -qx "OMGB_E2E_OK"; then
-      fail "grok headless probe did not echo the expected token"
-    fi
-    ok "headless probe returned OMGB_E2E_OK (exit $HEADLESS_RC)"
+    run_headless_probe
   elif [[ "${OMGB_E2E_ALLOW_HEADLESS_SKIP:-0}" = "1" ]]; then
     log "SKIP: headless reachability (explicit structural mode via OMGB_E2E_ALLOW_HEADLESS_SKIP=1)"
     log "[OMGB] structural e2e passed (headless skipped)"
@@ -236,4 +239,6 @@ main() {
   log "[OMGB] e2e passed"
 }
 
-main "$@"
+if [[ "${OMGB_E2E_LIB_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi

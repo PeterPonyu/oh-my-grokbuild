@@ -33,9 +33,9 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import os from "node:os"
+import { resolveRunsRoot } from "./omgb-paths.mjs"
 
-const RUNS_ROOT = path.join(os.homedir(), ".grok", "omgb", "runs")
+const RUNS_ROOT = resolveRunsRoot()
 
 function runDir(slug) {
   return path.join(RUNS_ROOT, slug)
@@ -57,6 +57,11 @@ function writeJson(p, obj) {
 function readTrim(p, fallback = "") {
   if (!existsSync(p)) return fallback
   return readFileSync(p, "utf8").trim()
+}
+
+function durationMs(start, end) {
+  const value = Date.parse(end) - Date.parse(start)
+  return Number.isFinite(value) ? value : 0
 }
 
 function init(slug, task, phase, cohort, rolesCsv) {
@@ -141,7 +146,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
     }]
   }
 
-  const durationMs = Date.parse(completedIso) - Date.parse(startedIso)
+  const cohortDurationMs = durationMs(startedIso, completedIso)
   const roles = []
   for (const entry of readdirSync(traceTmpDir).sort()) {
     if (!entry.endsWith(".start")) continue
@@ -155,7 +160,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
       pid: Number(pidStr) || 0,
       started: start,
       completed: end,
-      duration_ms: Date.parse(end) - Date.parse(start),
+      duration_ms: durationMs(start, end),
       exit_code: rc,
     })
   }
@@ -164,7 +169,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
     cohort,
     started: startedIso,
     completed: completedIso,
-    duration_ms: durationMs,
+    duration_ms: cohortDurationMs,
     roles,
   })
   writeJson(tracePath, { slug, cohorts })
@@ -176,7 +181,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
     name: phase,
     started: startedIso,
     completed: completedIso,
-    duration_ms: durationMs,
+    duration_ms: cohortDurationMs,
   })
   const activeSet = new Set(Array.isArray(state.activeRoles) ? state.activeRoles : [])
   for (const r of roles) activeSet.add(r.role)
@@ -191,7 +196,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
       phase,
       cohort,
       role_count: roles.length,
-      duration_ms: durationMs,
+      duration_ms: cohortDurationMs,
       trace_cohorts: cohorts.length,
     }),
   )
@@ -227,6 +232,9 @@ function buildAgentsConfig(slug, rolesCsv, readonlyRolesCsv) {
 function finalize(slug, keepActive) {
   const dir = runDir(slug)
   const statePath = path.join(dir, "state.json")
+  if (!existsSync(statePath)) {
+    throw new Error(`finalize: state.json does not exist: ${statePath} (call init first)`)
+  }
   const state = readJson(statePath, {})
   state.updatedAt = new Date().toISOString()
   if (!keepActive) {

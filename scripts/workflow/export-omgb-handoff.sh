@@ -26,12 +26,13 @@ fi
 
 SLUG="$1"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN_DIR="$ROOT/.grok/omgb/runs/$SLUG"
+RUNS_ROOT="${OMGB_RUNS_ROOT:-$HOME/.grok/omgb/runs}"
+RUN_DIR="$RUNS_ROOT/$SLUG"
 
 if [[ ! -d "$RUN_DIR" ]]; then
   echo "ERROR: run directory not found: $RUN_DIR"
   echo "Available runs:"
-  ls -1 "$ROOT/.grok/omgb/runs/" 2>/dev/null || echo "  (none yet)"
+  ls -1 "$RUNS_ROOT/" 2>/dev/null || echo "  (none yet)"
   exit 1
 fi
 

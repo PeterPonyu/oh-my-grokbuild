@@ -11,7 +11,7 @@
 
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 import { spawnSync } from "node:child_process"
@@ -20,10 +20,12 @@ import { fileURLToPath } from "node:url"
 const root = fileURLToPath(new URL("../..", import.meta.url))
 const stateIo = path.join(root, "scripts", "lib", "state-io.mjs")
 
-// Override RUNS_ROOT used by state-io via a symlink trick: state-io always
-// writes to ~/.grok/omgb/runs/<slug>. We use unique slugs per test so runs
-// are isolated. Each test cleans up its own run dir.
-const RUNS_ROOT = path.join(os.homedir(), ".grok", "omgb", "runs")
+// Point state-io at a per-process temp root so tests never touch real ~/.grok state.
+const RUNS_ROOT = mkdtempSync(path.join(os.tmpdir(), "omgb-state-io-runs-"))
+process.env.OMGB_RUNS_ROOT = RUNS_ROOT
+process.on("exit", () => {
+  rmSync(RUNS_ROOT, { recursive: true, force: true })
+})
 
 function runDir(slug) {
   return path.join(RUNS_ROOT, slug)
@@ -33,8 +35,12 @@ function readJson(p) {
   return JSON.parse(readFileSync(p, "utf8"))
 }
 
-function stateIoRun(args) {
-  return spawnSync(process.execPath, [stateIo, ...args], { encoding: "utf8" })
+function stateIoRun(args, options = {}) {
+  return spawnSync(process.execPath, [stateIo, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, OMGB_RUNS_ROOT: RUNS_ROOT },
+    ...options,
+  })
 }
 
 function cleanup(slug) {
@@ -244,6 +250,65 @@ test("build-agents-config: writes agents-config.json with correct shape", () => 
     assert.equal(config.leader.prompt_file, "agents/leader.md")
     assert.equal(config.leader.role, "roles/leader.toml")
   } finally {
+    cleanup(s)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// 9. error branches — append/finalize/usage/unknown op fail predictably
+// ---------------------------------------------------------------------------
+test("append-cohort: missing run dir exits non-zero", () => {
+  const tmp = path.join(os.tmpdir(), `omgb-test-missing-${process.pid}`)
+  mkdirSync(tmp, { recursive: true })
+  try {
+    const result = stateIoRun(["append-cohort", "missing-run", "grounding", "g1", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z", tmp])
+    assert.equal(result.status, 2)
+    assert.match(result.stderr, /run dir does not exist/)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
+  }
+})
+
+test("finalize: missing state.json exits non-zero", () => {
+  const s = slug()
+  mkdirSync(runDir(s), { recursive: true })
+  try {
+    const result = stateIoRun(["finalize", s])
+    assert.equal(result.status, 2)
+    assert.match(result.stderr, /state\.json does not exist/)
+  } finally {
+    cleanup(s)
+  }
+})
+
+test("usage and unknown op exit non-zero", () => {
+  const usageResult = stateIoRun(["init", "too-few"])
+  assert.equal(usageResult.status, 1)
+  assert.match(usageResult.stderr, /Usage:/)
+
+  const unknownResult = stateIoRun(["bogus-op"])
+  assert.equal(unknownResult.status, 1)
+  assert.match(unknownResult.stderr, /unknown op/)
+})
+
+test("readJson fallback: invalid legacy trace is replaced", () => {
+  const s = slug()
+  const dir = runDir(s)
+  const tmp = path.join(os.tmpdir(), `omgb-test-invalid-json-${process.pid}`)
+  try {
+    stateIoRun(["init", s, "invalid trace task", "grounding", "g1", "researcher"])
+    writeFileSync(path.join(dir, "fanout-trace.json"), "{not json")
+    mkdirSync(tmp, { recursive: true })
+    writeFileSync(path.join(tmp, "researcher.start"), "2026-01-01T00:00:00.000Z")
+    writeFileSync(path.join(tmp, "researcher.end"), "2026-01-01T00:00:01.000Z")
+    writeFileSync(path.join(tmp, "researcher.rc"), "0")
+    writeFileSync(path.join(tmp, "researcher.pid"), "123")
+    const result = stateIoRun(["append-cohort", s, "grounding", "g2", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z", tmp])
+    assert.equal(result.status, 0, result.stderr)
+    const trace = readJson(path.join(dir, "fanout-trace.json"))
+    assert.equal(trace.cohorts.length, 1)
+  } finally {
+    rmSync(tmp, { recursive: true, force: true })
     cleanup(s)
   }
 })

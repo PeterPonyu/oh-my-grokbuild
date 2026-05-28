@@ -79,7 +79,7 @@ shipping bash 4+ for licensing reasons, so default-shell macOS users have
 A repo-wide grep catches regressions:
 
 ```bash
-grep -rnE 'declare -A|mapfile|readarray|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]\}|\$\{[A-Za-z_][A-Za-z0-9_]*,,\}' scripts/
+grep -rnE --include='*.sh' 'declare -A|mapfile|readarray|\$BASHPID|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]\}|\$\{[A-Za-z_][A-Za-z0-9_]*,,\}' scripts/
 ```
 
 ## When to use Node (.mjs) instead of Bash (.sh)
@@ -102,6 +102,13 @@ The current split follows this rule:
   (`launch-omgb-fanout.sh` writing fanout-trace.json, finalizing state.json)
   shell out to small inline `node -e` snippets so the JSON path stays
   type-safe.
+
+## Shared lint surface
+
+Script guards use one shared lint surface: `scripts/local`, `scripts/workflow`,
+`scripts/ci`, and `scripts/lib`. Brand-leak, duplicate-payload-list, and
+bash-compatibility checks should consume that same set so new script buckets do
+not silently fall out of coverage.
 
 ## Why the split
 

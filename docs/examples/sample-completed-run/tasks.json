@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "Inspect plugin layout",
+      "ownerRole": "codebase-scout",
+      "status": "completed",
+      "acceptance": ["Relevant files are listed", "Verification command is identified"],
+      "verification": ["npm test"]
+    }
+  ]
+}
