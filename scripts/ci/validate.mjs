@@ -5,9 +5,11 @@ import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import { findNamingSlop } from "../lib/naming-slop.mjs"
-import { SCRIPT_LINT_DIRS } from "../lib/omgb-paths.mjs"
+import { resolveRunsRoot, SCRIPT_LINT_DIRS } from "../lib/omgb-paths.mjs"
 
 const root = fileURLToPath(new URL("../..", import.meta.url))
+
+const validationRunsRoot = resolveRunsRoot({ ...process.env, OMGB_RUNS_ROOT: path.join(root, ".grok", "omgb", "runs") })
 
 const requiredRoles = [
   "leader",
@@ -494,7 +496,7 @@ function assertAprRolesAreReadOnly() {
 // by the auditor — not just warned. This asserts the severity is "high".
 function assertPlaceholderMarkerBlocks() {
   const fixSlug = "fixture-placeholder-must-block"
-  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const runsRoot = validationRunsRoot
   const fixDir = path.join(runsRoot, fixSlug)
   mkdirSync(fixDir, { recursive: true })
   try {
@@ -526,13 +528,23 @@ function assertPlaceholderMarkerBlocks() {
     writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
 
     const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
-    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
 
     if (result.status === 0) {
       fail(
         "placeholder-marker audit fixture: expected auditor to exit non-zero (blocked) " +
           "for a run with synthesized placeholder output, but it passed. " +
           "Placeholder findings must have severity=high to trigger the block.",
+      )
+    }
+    if (!output.includes("placeholder marker")) {
+      fail(
+        "placeholder-marker audit fixture: expected semantic placeholder-marker finding, " +
+          `but auditor output was:\n${output}`,
       )
     }
   } finally {
@@ -546,7 +558,7 @@ function assertPlaceholderMarkerBlocks() {
 // (not just the legacy top-level roles array) when building fanoutStartsByRole.
 function assertMultiPhaseFanoutSerialStartBlocks() {
   const fixSlug = "fixture-multi-cohort-serial-must-block"
-  const runsRoot = path.join(root, ".grok", "omgb", "runs")
+  const runsRoot = validationRunsRoot
   const fixDir = path.join(runsRoot, fixSlug)
   mkdirSync(fixDir, { recursive: true })
   try {
@@ -605,13 +617,23 @@ function assertMultiPhaseFanoutSerialStartBlocks() {
     writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
 
     const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
-    const result = spawnSync(process.execPath, [auditorPath, fixSlug], { encoding: "utf8" })
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
 
     if (result.status === 0) {
       fail(
         "multi-cohort serial fanout fixture: expected auditor to exit non-zero (blocked) " +
           "for a grounding phase where cohorts[].roles starts are 10s apart (>5s = definitely serial), " +
           "but it passed. The auditor must read cohorts[].roles to build fanoutStartsByRole.",
+      )
+    }
+    if (!output.includes("fanout-trace") && !output.includes("transcript-evidence") && !output.includes("started timestamps span")) {
+      fail(
+        "multi-cohort serial fanout fixture: expected semantic serial-fanout finding, " +
+          `but auditor output was:\n${output}`,
       )
     }
   } finally {
