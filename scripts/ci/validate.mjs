@@ -659,7 +659,7 @@ function assertHeadlessGateRejectsNonZeroExit() {
 }
 
 function assertBash32CompatInShellScripts() {
-  const forbidden = /declare -A|mapfile|readarray|\$BASHPID|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]\}|\$\{[A-Za-z_][A-Za-z0-9_]*,,\}/
+  const forbidden = /declare -A|mapfile|readarray|\$BASHPID|date[^\n]*%[0-9]*N|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]\}|\$\{[A-Za-z_][A-Za-z0-9_]*,,\}/
   for (const dir of SCRIPT_LINT_DIRS) {
     const fullDir = path.join(root, dir)
     if (!existsSync(fullDir)) continue

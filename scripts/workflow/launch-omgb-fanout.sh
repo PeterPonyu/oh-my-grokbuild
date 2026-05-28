@@ -38,6 +38,11 @@
 
 set -euo pipefail
 
+# Portable UTC ISO-8601 timestamp with milliseconds. Uses Node (already a hard
+# dependency of this launcher) so it matches on macOS BSD date, which has no
+# GNU `%3N` specifier. Output format is identical: YYYY-MM-DDTHH:mm:ss.sssZ.
+iso_now() { node -e 'console.log(new Date().toISOString())'; }
+
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
 Usage: scripts/workflow/launch-omgb-fanout.sh <short-slug> "<task description>" [--phase <name>] [--roles "csv"] [--max-turns N] [--launch]
@@ -137,7 +142,7 @@ _existing_count=$(node -e "
   process.stdout.write(String(c+1));
 " "$RUN_DIR/fanout-trace.json" "$PHASE" 2>/dev/null || echo 1)
 COHORT_ID="${PHASE:0:1}${_existing_count}"
-RUN_STARTED_ISO="$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")"
+RUN_STARTED_ISO="$(iso_now)"
 
 echo "[fanout] phase:        $PHASE"
 echo "[fanout] cohort:       $COHORT_ID"
@@ -338,7 +343,7 @@ for role in "${ROLES[@]}"; do
   # Subshell records pid + start, runs grok, records end + rc. The & after
   # the closing brace forks the whole subshell in parallel.
   (
-    date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.start"
+    iso_now > "$TRACE_TMP/$role.start"
 
     # Read effort from the role's toml (role-local effort routing)
     effort=$(grep -E '^(reasoning_effort|effort)\s*=' "$ROOT/roles/$role.toml" 2>/dev/null | head -1 | sed -E 's/.*= *["'\'']?([^"'\'' ]+)["'\'']?.*/\1/' | tr -d '\r')
@@ -361,7 +366,7 @@ for role in "${ROLES[@]}"; do
       > "$TRACE_TMP/$role.out" 2> "$TRACE_TMP/$role.err"
     rc=$?
     set -e
-    date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.end"
+    iso_now > "$TRACE_TMP/$role.end"
     echo "$rc" > "$TRACE_TMP/$role.rc"
   ) &
   child_pid=$!
@@ -376,7 +381,7 @@ for pid in "${PIDS[@]}"; do
 done
 echo "[fanout] all subprocesses returned"
 
-RUN_COMPLETED_ISO="$(date -u +"%Y-%m-%dT%H:%M:%S.%3NZ")"
+RUN_COMPLETED_ISO="$(iso_now)"
 
 # Compose evidence.md from the per-role files. This is pure markdown
 # templating, so it stays in bash. All JSON (trace + state.json) is
