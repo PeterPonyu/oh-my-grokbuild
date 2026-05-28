@@ -7,10 +7,50 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: npm test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
       - run: npm test
+
+  shell-lanes:
+    name: credential-free shell lanes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install local payload into temp Grok home
+        run: |
+          export HOME="$RUNNER_TEMP/omgb-home"
+          mkdir -p "$HOME"
+          scripts/local/install-local.sh --force
+      - name: Doctor with fake Grok CLI
+        run: |
+          export HOME="$RUNNER_TEMP/omgb-home"
+          mkdir -p "$HOME/.grok/bin" "$HOME/.grok"
+          cat > "$HOME/.grok/bin/grok" <<'FAKE'
+          #!/usr/bin/env bash
+          case "$1" in
+            --version) echo "grok fake-ci" ;;
+            inspect) echo "  └ omgb user" ;;
+            *) echo "fake grok: $*" ;;
+          esac
+          FAKE
+          chmod +x "$HOME/.grok/bin/grok"
+          export PATH="$HOME/.grok/bin:$PATH"
+          touch "$HOME/.grok/auth.json"
+          scripts/local/doctor.sh
+      - name: Structural e2e with fake Grok CLI
+        run: |
+          export HOME="$RUNNER_TEMP/omgb-home"
+          export PATH="$HOME/.grok/bin:$PATH"
+          OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh

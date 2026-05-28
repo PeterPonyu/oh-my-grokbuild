@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process"
 import { fileURLToPath } from "node:url"
 
 import { findNamingSlop } from "../lib/naming-slop.mjs"
+import { SCRIPT_LINT_DIRS } from "../lib/omgb-paths.mjs"
 
 const root = fileURLToPath(new URL("../..", import.meta.url))
 
@@ -452,10 +453,12 @@ function runSanity() {
   }
 
   assertNoBrandLeakInScripts()
+  assertBash32CompatInShellScripts()
   assertAprRolesAreReadOnly()
   assertPlaceholderMarkerBlocks()
   assertMultiPhaseFanoutSerialStartBlocks()
   assertHeadlessGateRejectsNonZeroExit()
+  assertValidateRejectsUnknownFlag()
 
   if (process.exitCode) {
     return
@@ -633,13 +636,42 @@ function assertHeadlessGateRejectsNonZeroExit() {
   }
 }
 
-// Brand-leak guard: first-party runtime scripts must not write to .omc/ paths.
-// The .omc namespace belongs to oh-my-claudecode; oh-my-grokbuild writes its
+function assertBash32CompatInShellScripts() {
+  const forbidden = /declare -A|mapfile|readarray|\$BASHPID|\$\{[A-Za-z_][A-Za-z0-9_]*\[-[0-9]+\]\}|\$\{[A-Za-z_][A-Za-z0-9_]*,,\}/
+  for (const dir of SCRIPT_LINT_DIRS) {
+    const fullDir = path.join(root, dir)
+    if (!existsSync(fullDir)) continue
+    for (const entry of readdirSync(fullDir)) {
+      const rel = path.join(dir, entry)
+      const full = path.join(root, rel)
+      if (!statSync(full).isFile() || !entry.endsWith(".sh")) continue
+      const text = readText(rel)
+      const match = text.match(forbidden)
+      if (match) {
+        fail(`bash 3.2 compatibility: ${rel} contains forbidden idiom ${match[0]}`)
+      }
+    }
+  }
+}
+
+function assertValidateRejectsUnknownFlag() {
+  const result = spawnSync(process.execPath, [path.join(root, "scripts", "ci", "validate.mjs"), "--smoek"], { encoding: "utf8" })
+  if (result.status === 0) {
+    fail("validate.mjs must reject unknown flags instead of exiting 0")
+  }
+  if (!String(result.stderr || result.stdout).includes("Unknown option")) {
+    fail("validate.mjs unknown-flag rejection should print an Unknown option message")
+  }
+}
+
+// Brand-leak guard: first-party runtime scripts must not write to peer-project paths.
+// The legacy Claude namespace belongs to oh-my-claudecode; oh-my-grokbuild writes its
 // own evidence under .omgb/. Peer-project mentions in research/changelog/prd
 // remain allowed because they document the broader ecosystem.
 function assertNoBrandLeakInScripts() {
-  const scriptDirs = ["scripts/local", "scripts/workflow"]
-  for (const dir of scriptDirs) {
+  const brandNamespace = ".om" + "c/"
+  const brandLeakRe = new RegExp("\\.om" + "c/")
+  for (const dir of SCRIPT_LINT_DIRS) {
     const fullDir = path.join(root, dir)
     if (!existsSync(fullDir)) continue
     for (const entry of readdirSync(fullDir)) {
@@ -648,8 +680,8 @@ function assertNoBrandLeakInScripts() {
       if (!statSync(full).isFile()) continue
       if (!/\.(sh|mjs|js|cjs)$/.test(entry)) continue
       const text = readText(rel)
-      if (/\.omc\//.test(text)) {
-        fail(`brand leak: ${rel} references .omc/ — first-party scripts must use .omgb/`)
+      if (brandLeakRe.test(text)) {
+        fail(`brand leak: ${rel} references ${brandNamespace} — first-party scripts must use .omgb/`)
       }
     }
   }
@@ -670,6 +702,7 @@ async function runNamingSlopWarn() {
 
 const rawArgs = process.argv.slice(2)
 const args = new Set(rawArgs)
+const knownFlags = new Set(["--smoke", "--sanity", "--audit-run", "--audit-all", "--help"])
 
 function usage() {
   console.log(
@@ -686,6 +719,22 @@ function usage() {
 if (rawArgs.length === 0 || args.has("--help")) {
   usage()
   process.exit(args.has("--help") ? 0 : 1)
+}
+
+const unknownArgs = rawArgs.filter((arg, index) => {
+  if (index > 0 && rawArgs[index - 1] === "--audit-run") return false
+  return arg.startsWith("-") && !knownFlags.has(arg)
+})
+if (unknownArgs.length > 0) {
+  console.error(`Unknown option(s): ${unknownArgs.join(", ")}`)
+  usage()
+  process.exit(1)
+}
+
+if (!["--smoke", "--sanity", "--audit-run", "--audit-all"].some((flag) => args.has(flag))) {
+  console.error(`No validation mode selected for args: ${rawArgs.join(" ")}`)
+  usage()
+  process.exit(1)
 }
 
 if (args.has("--smoke")) {

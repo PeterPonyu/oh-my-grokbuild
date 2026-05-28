@@ -29,6 +29,11 @@ payload_entry_is_safe() {
   esac
 }
 
+PROBE_RUNS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/omgb-doctor-runs.XXXXXX")"
+cleanup_probe_runs() { rm -rf "$PROBE_RUNS_ROOT"; }
+trap cleanup_probe_runs EXIT
+export OMGB_RUNS_ROOT="$PROBE_RUNS_ROOT"
+
 echo "OMGB Doctor — checking your Grok + omgb setup"
 echo "Source: $ROOT"
 echo
@@ -36,10 +41,10 @@ echo
 # 1. Node
 if command -v node >/dev/null 2>&1; then
   NODEV="$(node --version)"
-  if node --version | grep -qE 'v(1[8-9]|[2-9][0-9])'; then
+  if node --version | grep -qE 'v(2[0-9]|[3-9][0-9])'; then
     pass "Node.js present: $NODEV"
   else
-    warn "Node.js present but old ($NODEV). v18+ recommended for validate.mjs"
+    warn "Node.js present but old ($NODEV). Node 20+ is required by package.json engines"
   fi
 else
   fail "Node.js not found in PATH (required for validate / doctor)"
@@ -120,7 +125,7 @@ if [[ $SYMMETRY_OK -eq 1 ]]; then
 fi
 
 # 5c. Launcher dry-run — write and validate a 16-role agents JSON.
-LAUNCH_DRY_DIR="$ROOT/.grok/omgb/runs/doctor-probe"
+LAUNCH_DRY_DIR="$OMGB_RUNS_ROOT/doctor-probe"
 if bash "$ROOT/scripts/workflow/launch-omgb-team.sh" doctor-probe "doctor dry-run probe" >/dev/null 2>&1; then
   if node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$LAUNCH_DRY_DIR/agents-config.json" 2>/dev/null; then
     pass "launch-omgb-team.sh dry-run produced a valid 16-role agents JSON"

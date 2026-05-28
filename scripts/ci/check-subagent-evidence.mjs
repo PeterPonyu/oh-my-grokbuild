@@ -25,12 +25,13 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
-import os from "node:os"
 import { fileURLToPath } from "node:url"
 
+import { resolveRunsRoot, resolveSessionsRoot } from "../lib/omgb-paths.mjs"
+
 const root = fileURLToPath(new URL("../..", import.meta.url))
-const runsRoot = path.join(root, ".grok", "omgb", "runs")
-const grokSessionsRoot = path.join(os.homedir(), ".grok", "sessions")
+const runsRoot = resolveRunsRoot()
+const grokSessionsRoot = resolveSessionsRoot()
 
 // A "single assistant turn" — two spawn_subagent calls in the same tool_use
 // array — produces events.jsonl `tool_started` records within ~milliseconds
@@ -44,15 +45,22 @@ function urlEncodeCwd(cwd) {
   return cwd.replace(/\//g, "%2F")
 }
 
-function findGrokSessionForRun(repoRoot, slug, runMtimeMs) {
-  // Normalize trailing slash: fileURLToPath('../..') returns '/path/' with a
-  // trailing slash, but Grok stores `info.cwd` without one.
+const sessionIndexByRepoRoot = new Map()
+
+function buildGrokSessionIndex(repoRoot) {
   const normalizedRoot = repoRoot.replace(/\/$/, "")
+  if (sessionIndexByRepoRoot.has(normalizedRoot)) {
+    return sessionIndexByRepoRoot.get(normalizedRoot)
+  }
+
   const cwdEncoded = urlEncodeCwd(normalizedRoot)
   const dir = path.join(grokSessionsRoot, cwdEncoded)
-  if (!existsSync(dir)) return null
+  const index = []
+  if (!existsSync(dir)) {
+    sessionIndexByRepoRoot.set(normalizedRoot, index)
+    return index
+  }
 
-  const candidates = []
   for (const entry of readdirSync(dir)) {
     const sessionDir = path.join(dir, entry)
     const summaryPath = path.join(sessionDir, "summary.json")
@@ -65,18 +73,27 @@ function findGrokSessionForRun(repoRoot, slug, runMtimeMs) {
       continue
     }
     if (summary?.info?.cwd !== normalizedRoot) continue
-    const summ = summary.session_summary || summary.generated_title || ""
-    const updatedAt = summary.updated_at ? Date.parse(summary.updated_at) : 0
-    // Heuristic: match if the session summary mentions the slug as a token,
-    // or if its updated_at is within the run dir's mtime window.
-    const slugMatch = summ.toLowerCase().includes(slug.toLowerCase())
-    const withinWindow = runMtimeMs && Math.abs(updatedAt - runMtimeMs) < 10 * 60 * 1000
+    index.push({
+      sessionDir,
+      summaryText: String(summary.session_summary || summary.generated_title || "").toLowerCase(),
+      updatedAt: summary.updated_at ? Date.parse(summary.updated_at) : 0,
+    })
+  }
+
+  sessionIndexByRepoRoot.set(normalizedRoot, index)
+  return index
+}
+
+function findGrokSessionForRun(repoRoot, slug, runMtimeMs) {
+  const candidates = []
+  for (const entry of buildGrokSessionIndex(repoRoot)) {
+    const slugMatch = entry.summaryText.includes(slug.toLowerCase())
+    const withinWindow = runMtimeMs && Math.abs(entry.updatedAt - runMtimeMs) < 10 * 60 * 1000
     if (slugMatch || withinWindow) {
-      candidates.push({ sessionDir, updatedAt, slugMatch })
+      candidates.push({ sessionDir: entry.sessionDir, updatedAt: entry.updatedAt, slugMatch })
     }
   }
   if (candidates.length === 0) return null
-  // Prefer slug-matched, then most recently updated.
   candidates.sort((a, b) => (b.slugMatch ? 1 : 0) - (a.slugMatch ? 1 : 0) || b.updatedAt - a.updatedAt)
   return candidates[0].sessionDir
 }
@@ -301,9 +318,21 @@ function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsB
   return findings
 }
 
-function auditRun(slug) {
+function auditRun(slug, { explicit = false } = {}) {
   const runDir = path.join(runsRoot, slug)
   if (!existsSync(runDir) || !statSync(runDir).isDirectory()) {
+    if (explicit) {
+      return {
+        slug,
+        status: "blocked",
+        state_phase: "missing",
+        active_roles: [],
+        spawned_roles: [],
+        synthesis_opt_in: false,
+        findings: [{ severity: "high", role: "auditor", message: `explicit audit target missing at ${runDir}` }],
+        stall_warnings: [],
+      }
+    }
     return { slug, status: "skip", reason: "run directory missing" }
   }
 
@@ -313,6 +342,18 @@ function auditRun(slug) {
   const missionPath = path.join(runDir, "mission.md")
 
   if (!existsSync(statePath)) {
+    if (explicit) {
+      return {
+        slug,
+        status: "blocked",
+        state_phase: "missing",
+        active_roles: [],
+        spawned_roles: [],
+        synthesis_opt_in: false,
+        findings: [{ severity: "high", role: "auditor", message: `explicit audit target has no state.json at ${statePath}` }],
+        stall_warnings: [],
+      }
+    }
     return { slug, status: "skip", reason: "state.json missing" }
   }
 
@@ -564,12 +605,13 @@ if (args.includes("--all")) {
 } else {
   slugs = [args[0]]
 }
+const explicitAudit = !args.includes("--all")
 
 let blockedCount = 0
 let skippedCount = 0
 const reports = []
 for (const slug of slugs) {
-  const report = auditRun(slug)
+  const report = auditRun(slug, { explicit: explicitAudit })
   reports.push(report)
   printReport(report)
   if (report.status === "blocked") blockedCount += 1

@@ -33,9 +33,13 @@ agents/ROLE-INDEX.md              # thin index (deliberately not AGENTS.md)
 agents/<role>.md                  # 16 detailed Grok-native agent prompts
 roles/<role>.toml                 # 16 Grok-native capability configs
 scripts/ci/validate.mjs              # smoke + sanity validator
-scripts/local/e2e.sh                    # E2E harness; set mode env for pass marker
-scripts/local/install-local.sh          # local install into ~/.grok/plugins/local
-docs/research/                    # grounded research notes
+scripts/ci/check-subagent-evidence.mjs # run artifact auditor
+scripts/lib/                     # shared Node helpers (state + paths)
+scripts/local/e2e.sh             # E2E harness; set mode env for pass marker
+scripts/local/install-local.sh   # local install into ~/.grok/plugins/local
+scripts/workflow/                # fanout/team launchers and handoff export
+docs/examples/                   # sanitized committed OMGB run examples
+docs/research/                   # grounded research notes
 prd.json                          # task PRD with acceptance criteria
 ```
 
@@ -162,6 +166,8 @@ Expected success markers:
 | `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (structural check only). |
 | `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis as a fallback when subagents are unavailable. |
 | `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. Subagents whose recorded duration exceeds this value print a `WARN` line in the audit report. WARN-only; does not change exit code. |
+| `OMGB_RUNS_ROOT` | `~/.grok/omgb/runs` | Overrides where state-io, launchers, exporter, and auditor read/write OMGB run directories. Useful for hermetic tests and CI probes. |
+| `OMGB_SESSIONS_ROOT` | `~/.grok/sessions` | Overrides where the auditor looks for Grok session transcripts (`summary.json` / `events.jsonl`). |
 
 ## Mandatory Subagent Spawning (v0.2.0+)
 
@@ -213,9 +219,14 @@ Example:
 scripts/workflow/export-omgb-handoff.sh omgb-self-audit-agents-md-install-guide
 ```
 
+A sanitized committed example lives at `docs/examples/sample-completed-run/` so
+new contributors and receiving agents can inspect valid artifact shapes without
+starting an authenticated Grok session.
+
 This produces:
 
-- `.grok/omgb/runs/<slug>/OMGB-RUN-<slug>-HANDOFF.md`
+- `.grok/omgb/runs/<slug>/omgb-handoff-<slug>.md`
+- `.grok/omgb/runs/<slug>/omgb-handoff.md`
 - A copy at the repo root for convenience
 
 The handoff file:

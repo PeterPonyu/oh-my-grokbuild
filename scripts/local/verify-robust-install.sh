@@ -72,7 +72,8 @@ esac
 # 4. Manifest is the single source of truth
 echo
 echo "→ Verifying local-payload.txt is the only payload definition..."
-if grep -r --include="*.sh" --include="*.mjs" "plugin.json.*cp\|for required in.*plugin.json" "$ROOT/scripts/local" "$ROOT/scripts/ci" | grep -v "local-payload.txt" | grep -v "verify-robust-install.sh" >/dev/null; then
+SCRIPT_LINT_DIRS=("$ROOT/scripts/local" "$ROOT/scripts/workflow" "$ROOT/scripts/ci" "$ROOT/scripts/lib")
+if grep -r --include="*.sh" --include="*.mjs" "plugin.json.*cp\|for required in.*plugin.json" "${SCRIPT_LINT_DIRS[@]}" | grep -v "local-payload.txt" | grep -v "verify-robust-install.sh" >/dev/null; then
   fail "Found hardcoded payload lists outside of local-payload.txt"
 else
   pass "No duplicate hardcoded payload lists found"

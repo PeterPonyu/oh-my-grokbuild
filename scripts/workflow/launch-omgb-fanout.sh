@@ -90,7 +90,8 @@ if [[ "${#ROLES[@]}" -lt 2 ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-RUN_DIR_HOME="$HOME/.grok/omgb/runs/$SHORT_SLUG"
+RUNS_ROOT="${OMGB_RUNS_ROOT:-$HOME/.grok/omgb/runs}"
+RUN_DIR_HOME="$RUNS_ROOT/$SHORT_SLUG"
 RUN_DIR_LINK="$ROOT/.grok/omgb/runs/$SHORT_SLUG"
 RUN_DIR="$RUN_DIR_HOME"
 
@@ -337,10 +338,9 @@ for role in "${ROLES[@]}"; do
   # Subshell records pid + start, runs grok, records end + rc. The & after
   # the closing brace forks the whole subshell in parallel.
   (
-    echo "$BASHPID" > "$TRACE_TMP/$role.pid"
     date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.start"
 
-    # Read effort from the role's toml (v0.9.0 effort routing)
+    # Read effort from the role's toml (role-local effort routing)
     effort=$(grep -E '^(reasoning_effort|effort)\s*=' "$ROOT/roles/$role.toml" 2>/dev/null | head -1 | sed -E 's/.*= *["'\'']?([^"'\'' ]+)["'\'']?.*/\1/' | tr -d '\r')
     effort_flag=""
     if [[ -n "$effort" ]]; then
@@ -364,8 +364,10 @@ for role in "${ROLES[@]}"; do
     date -u +"%Y-%m-%dT%H:%M:%S.%3NZ" > "$TRACE_TMP/$role.end"
     echo "$rc" > "$TRACE_TMP/$role.rc"
   ) &
-  PIDS+=($!)
-  echo "[fanout]   forked $role pid=${PIDS[$((${#PIDS[@]}-1))]}"
+  child_pid=$!
+  PIDS+=("$child_pid")
+  echo "$child_pid" > "$TRACE_TMP/$role.pid"
+  echo "[fanout]   forked $role pid=$child_pid"
 done
 
 echo "[fanout] waiting for ${#PIDS[@]} subprocesses ..."
@@ -408,7 +410,7 @@ for role in "${ROLES[@]}"; do
   rc="$(cat "$TRACE_TMP/$role.rc"     2>/dev/null || echo "?")"
   pid="$(cat "$TRACE_TMP/$role.pid"   2>/dev/null || echo "0")"
   out="$(cat "$TRACE_TMP/$role.out" 2>/dev/null || echo "")"
-  duration_ms="$(node -e "console.log(Date.parse('$end') - Date.parse('$start'))")"
+  duration_ms="$(node -e "const d=Date.parse(process.argv[2])-Date.parse(process.argv[1]); console.log(Number.isFinite(d)?d:0)" "$start" "$end")"
   excerpt="$(printf '%s' "$out" | sed -n "/### WORKER START $role/,/### WORKER END $role/p")"
   if [[ -z "$excerpt" ]]; then
     excerpt="### WORKER START $role
