@@ -8,7 +8,7 @@ plugin on a fresh machine. No interactive prompts.
 
 The host must have:
 
-- `node` >= v18 (the validator is ESM).
+- `node` >= v20 (matches `package.json` engines; the validator is ESM). `scripts/local/doctor.sh` warns on older versions.
 - `grok` CLI on `PATH` or installed at `~/.grok/bin/grok` (Grok Build).
 - An authenticated Grok session — a non-empty `~/.grok/auth.json`. The
   installer **does not** invoke `grok login` and refuses to proceed without
@@ -118,7 +118,7 @@ For agents that prefer JSON:
 ```json
 {
   "preconditions": {
-    "node": ">=18",
+    "node": ">=20",
     "grok": "any version >=0.1.x",
     "auth_file": "~/.grok/auth.json"
   },
