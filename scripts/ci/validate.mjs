@@ -103,6 +103,8 @@ const forbiddenManifestKeys = new Set([
 ])
 
 const forbiddenTopLevelDirs = ["hooks", "mcps", "mcp", "commands"]
+const surfaceKinds = new Set(["skill", "command", "agent", "role", "hook", "mcp", "manifest", "script", "doc"])
+const surfaceClassifications = new Set(["default", "advanced", "internal", "deprecated"])
 function fail(message) {
   console.error(`[OMGB] validation failed: ${message}`)
   process.exitCode = 1
@@ -158,6 +160,190 @@ function assertManifestIsSkillsOnly(relativePath) {
     if (forbiddenManifestKeys.has(key)) {
       fail(`${relativePath} declares forbidden key ${key}`)
     }
+  }
+}
+
+function assertSurfaceInventory() {
+  assertExists("docs/surface-inventory.json")
+
+  const inventory = readJson("docs/surface-inventory.json")
+  if (inventory.schema_version !== "1.0") {
+    fail("docs/surface-inventory.json schema_version must be 1.0")
+  }
+  if (inventory.repo !== "oh-my-grokbuild") {
+    fail("docs/surface-inventory.json repo must be oh-my-grokbuild")
+  }
+  if (inventory.policy?.default_surface_contract !== "/omgb-only") {
+    fail("docs/surface-inventory.json must declare the /omgb-only default surface contract")
+  }
+  if (inventory.policy?.no_execution_before_inventory_validation !== true) {
+    fail("docs/surface-inventory.json must preserve no_execution_before_inventory_validation:true")
+  }
+  if (!Array.isArray(inventory.surfaces)) {
+    fail("docs/surface-inventory.json surfaces must be an array")
+    return
+  }
+
+  const ids = new Set()
+  const defaults = []
+  let advanced = 0
+  let internal = 0
+  let deprecated = 0
+
+  for (const surface of inventory.surfaces) {
+    if (!surface.id || ids.has(surface.id)) {
+      fail(`docs/surface-inventory.json has missing/duplicate surface id: ${surface.id ?? "<missing>"}`)
+    }
+    ids.add(surface.id)
+
+    if (!surfaceKinds.has(surface.kind)) {
+      fail(`docs/surface-inventory.json surface ${surface.id} has invalid kind: ${surface.kind}`)
+    }
+    if (!surfaceClassifications.has(surface.classification)) {
+      fail(`docs/surface-inventory.json surface ${surface.id} has invalid classification: ${surface.classification}`)
+    }
+    if (typeof surface.user_invocable !== "boolean") {
+      fail(`docs/surface-inventory.json surface ${surface.id} user_invocable must be boolean`)
+    }
+    if (!surface.path || !surface.rationale || !surface.host_boundary) {
+      fail(`docs/surface-inventory.json surface ${surface.id} must include path, rationale, and host_boundary`)
+    }
+
+    if (surface.classification === "default" && surface.user_invocable) defaults.push(surface)
+    if (surface.classification === "advanced") advanced += 1
+    if (surface.classification === "internal") internal += 1
+    if (surface.classification === "deprecated") deprecated += 1
+  }
+
+  if (defaults.length !== 1 || defaults[0].path !== "skills/omgb/SKILL.md") {
+    fail("docs/surface-inventory.json must list exactly one default user-invocable surface: skills/omgb/SKILL.md")
+  }
+  if (inventory.counts?.default_user_invocable !== defaults.length) {
+    fail("docs/surface-inventory.json counts.default_user_invocable is stale")
+  }
+  if (inventory.counts?.advanced !== advanced) {
+    fail("docs/surface-inventory.json counts.advanced is stale")
+  }
+  if (inventory.counts?.internal !== internal) {
+    fail("docs/surface-inventory.json counts.internal is stale")
+  }
+  if (inventory.counts?.deprecated !== deprecated) {
+    fail("docs/surface-inventory.json counts.deprecated is stale")
+  }
+
+  const discoveredSkillFiles = walkFiles(path.join(root, "skills"))
+    .filter((file) => path.basename(file) === "SKILL.md")
+    .map((file) => path.relative(root, file))
+  const inventoriedSkillFiles = inventory.surfaces
+    .filter((surface) => surface.kind === "skill")
+    .map((surface) => surface.path)
+    .sort()
+  if (
+    discoveredSkillFiles.length !== inventoriedSkillFiles.length ||
+    discoveredSkillFiles.sort().some((file, index) => file !== inventoriedSkillFiles[index])
+  ) {
+    fail(
+      `docs/surface-inventory.json skill surfaces are stale; discovered ${discoveredSkillFiles.join(", ")} but inventoried ${inventoriedSkillFiles.join(", ")}`,
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Exact-file role/agent inventory coverage.
+  //
+  // Every discovered roles/*.toml and agents/*.md surface must be covered
+  // EXACTLY ONCE in the inventory. We FAIL on:
+  //   - missing   : discovered file with no matching inventory entry
+  //   - stale      : inventory entry whose file no longer exists on disk
+  //   - duplicate  : two inventory entries pointing at the same path
+  // agents/ROLE-INDEX.md is INTENTIONALLY EXCLUDED here: it is a thin internal
+  // index/doc (not an invocable agent prompt and not consumed via --agents),
+  // mirroring the runSmoke() exclusion (entry !== "ROLE-INDEX.md"). This
+  // exclusion is explicit and documented so it is not a silent coverage gap.
+  // ---------------------------------------------------------------------------
+  const discoveredRoleAgentFiles = [
+    ...(existsSync(path.join(root, "roles"))
+      ? readdirSync(path.join(root, "roles"))
+          .filter((entry) => entry.endsWith(".toml"))
+          .map((entry) => path.posix.join("roles", entry))
+      : []),
+    ...(existsSync(path.join(root, "agents"))
+      ? readdirSync(path.join(root, "agents"))
+          .filter((entry) => entry.endsWith(".md") && entry !== "ROLE-INDEX.md")
+          .map((entry) => path.posix.join("agents", entry))
+      : []),
+  ].sort()
+
+  const roleAgentSurfaces = inventory.surfaces.filter(
+    (surface) => surface.kind === "role" || surface.kind === "agent",
+  )
+
+  // Detect duplicate inventory paths among role/agent entries.
+  const seenRoleAgentPaths = new Set()
+  for (const surface of roleAgentSurfaces) {
+    if (seenRoleAgentPaths.has(surface.path)) {
+      fail(`docs/surface-inventory.json has duplicate role/agent entry for path: ${surface.path}`)
+    }
+    seenRoleAgentPaths.add(surface.path)
+  }
+
+  // Each role/agent entry must be non-default so /omgb stays the only default
+  // user-invocable surface: classification advanced|internal, not user_invocable,
+  // and explicitly first_run:false.
+  for (const surface of roleAgentSurfaces) {
+    if (surface.classification === "default") {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must not be classification:default (/omgb-only contract)`,
+      )
+    }
+    if (surface.user_invocable !== false) {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must be user_invocable:false (/omgb-only contract)`,
+      )
+    }
+    if (surface.first_run !== false) {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must declare first_run:false (/omgb-only contract)`,
+      )
+    }
+  }
+
+  const inventoriedRoleAgentFiles = [...seenRoleAgentPaths].sort()
+
+  // Missing: discovered on disk but absent from inventory.
+  for (const file of discoveredRoleAgentFiles) {
+    if (!seenRoleAgentPaths.has(file)) {
+      fail(`docs/surface-inventory.json is MISSING a role/agent surface for discovered file: ${file}`)
+    }
+  }
+  // Stale: in inventory but file no longer exists on disk.
+  for (const file of inventoriedRoleAgentFiles) {
+    if (!discoveredRoleAgentFiles.includes(file)) {
+      fail(`docs/surface-inventory.json has a STALE role/agent surface; file no longer exists: ${file}`)
+    }
+  }
+  if (
+    discoveredRoleAgentFiles.length !== inventoriedRoleAgentFiles.length ||
+    discoveredRoleAgentFiles.some((file, index) => file !== inventoriedRoleAgentFiles[index])
+  ) {
+    fail(
+      `docs/surface-inventory.json role/agent surfaces are stale; discovered ${discoveredRoleAgentFiles.join(", ")} but inventoried ${inventoriedRoleAgentFiles.join(", ")}`,
+    )
+  }
+
+  // counts.default_agents_or_roles must equal the number of default-classified
+  // role/agent entries (which must be 0 under the /omgb-only contract).
+  const defaultRoleAgentCount = roleAgentSurfaces.filter(
+    (surface) => surface.classification === "default",
+  ).length
+  if (typeof inventory.counts?.default_agents_or_roles !== "number") {
+    fail("docs/surface-inventory.json counts.default_agents_or_roles must be a number")
+  } else if (inventory.counts.default_agents_or_roles !== defaultRoleAgentCount) {
+    fail(
+      `docs/surface-inventory.json counts.default_agents_or_roles is stale; expected ${defaultRoleAgentCount}, got ${inventory.counts.default_agents_or_roles}`,
+    )
+  }
+  if (defaultRoleAgentCount !== 0) {
+    fail("docs/surface-inventory.json must have zero default role/agent surfaces (/omgb-only contract)")
   }
 }
 
@@ -238,9 +424,12 @@ function runSmoke() {
   assertExists("scripts/ci/validate.mjs")
   assertExists("scripts/local/e2e.sh")
   assertExists("scripts/local/install-local.sh")
+  assertExists("docs/LINEAGE.md")
+  assertExists("docs/release-checklist.md")
 
   assertManifestIsSkillsOnly("plugin.json")
   assertManifestIsSkillsOnly(".claude-plugin/plugin.json")
+  assertSurfaceInventory()
 
   const payloadItems = loadLocalPayloadManifest()
   for (const item of payloadItems) {
@@ -298,6 +487,8 @@ function runSanity() {
   const indexFile = readText("agents/ROLE-INDEX.md")
   const grokDocs = readText("docs/research/grok-build-docs.md")
   const localSurvey = readText("docs/research/local-orchestration-survey.md")
+  const lineage = readText("docs/LINEAGE.md")
+  const releaseChecklist = readText("docs/release-checklist.md")
   const prd = readJson("prd.json")
 
   for (const phrase of requiredSkillPhrases) {
@@ -452,6 +643,27 @@ function runSanity() {
   }
   if (!skill.includes("[OMGB] structural e2e passed")) {
     fail("skill must document [OMGB] structural e2e passed marker")
+  }
+  for (const phrase of [
+    "/omgb",
+    "only default user-invocable",
+    "No MCP servers",
+    "hooks",
+    "source-level reuse",
+  ]) {
+    if (!lineage.includes(phrase)) {
+      fail(`docs/LINEAGE.md missing lineage/host-boundary phrase: ${phrase}`)
+    }
+  }
+  for (const phrase of [
+    "docs/surface-inventory.json",
+    "scripts/local/doctor.sh",
+    "scripts/local/install-local.sh --force",
+    "Expansion guard",
+  ]) {
+    if (!releaseChecklist.includes(phrase)) {
+      fail(`docs/release-checklist.md missing release-readiness phrase: ${phrase}`)
+    }
   }
 
   assertNoBrandLeakInScripts()
