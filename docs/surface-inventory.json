@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "repo": "oh-my-grokbuild",
+  "updated": "2026-05-30",
+  "policy": {
+    "default_user_invocable_ceiling": 1,
+    "default_agent_role_ceiling": 0,
+    "no_execution_before_inventory_validation": true,
+    "default_surface_contract": "/omgb-only"
+  },
+  "surfaces": [
+    {
+      "id": "skill-omgb",
+      "kind": "skill",
+      "path": "skills/omgb/SKILL.md",
+      "classification": "default",
+      "user_invocable": true,
+      "rationale": "Single Grok Build slash-skill entry point for all user-facing orchestration.",
+      "host_boundary": "Grok Build user skill; installed via ~/.grok/skills/omgb symlink."
+    },
+    {
+      "id": "manifest-root",
+      "kind": "manifest",
+      "path": "plugin.json",
+      "classification": "internal",
+      "user_invocable": false,
+      "rationale": "Skills-only local plugin manifest, not a separate command surface.",
+      "host_boundary": "Declares exactly skills/omgb and no hooks/MCP/commands/agents."
+    },
+    {
+      "id": "manifest-claude-compat",
+      "kind": "manifest",
+      "path": ".claude-plugin/plugin.json",
+      "classification": "internal",
+      "user_invocable": false,
+      "rationale": "Compatibility manifest for plugin packaging; not user-invocable.",
+      "host_boundary": "Declares exactly ../skills/omgb and no hooks/MCP/commands/agents."
+    },
+    {
+      "id": "roles-omgb-team",
+      "kind": "role",
+      "path": "agents/ and roles/",
+      "classification": "advanced",
+      "user_invocable": false,
+      "rationale": "Sixteen per-role prompts/configs are activated by /omgb launchers, not default slash commands.",
+      "host_boundary": "Grok --agents inputs only; no registered agent plugin surface."
+    },
+    {
+      "id": "workflow-launchers",
+      "kind": "script",
+      "path": "scripts/workflow/",
+      "classification": "advanced",
+      "user_invocable": false,
+      "rationale": "Developer-run launch/handoff helpers for explicit CLI workflows.",
+      "host_boundary": "Local shell scripts; no automatic daemon or hook behavior."
+    },
+    {
+      "id": "local-doctor-install",
+      "kind": "script",
+      "path": "scripts/local/",
+      "classification": "advanced",
+      "user_invocable": false,
+      "rationale": "Install, doctor, and e2e checks are explicit maintenance commands.",
+      "host_boundary": "Local filesystem and Grok CLI checks only."
+    },
+    {
+      "id": "ci-validators",
+      "kind": "script",
+      "path": "scripts/ci/",
+      "classification": "internal",
+      "user_invocable": false,
+      "rationale": "Validation and audit gates support release readiness; they are not plugin surfaces.",
+      "host_boundary": "Node-based local/CI checks."
+    }
+  ],
+  "counts": {
+    "default_user_invocable": 1,
+    "default_agents_or_roles": 0,
+    "advanced": 3,
+    "internal": 3,
+    "deprecated": 0
+  }
+}

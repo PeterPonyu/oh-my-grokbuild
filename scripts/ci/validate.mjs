@@ -103,6 +103,8 @@ const forbiddenManifestKeys = new Set([
 ])
 
 const forbiddenTopLevelDirs = ["hooks", "mcps", "mcp", "commands"]
+const surfaceKinds = new Set(["skill", "command", "agent", "role", "hook", "mcp", "manifest", "script", "doc"])
+const surfaceClassifications = new Set(["default", "advanced", "internal", "deprecated"])
 function fail(message) {
   console.error(`[OMGB] validation failed: ${message}`)
   process.exitCode = 1
@@ -158,6 +160,91 @@ function assertManifestIsSkillsOnly(relativePath) {
     if (forbiddenManifestKeys.has(key)) {
       fail(`${relativePath} declares forbidden key ${key}`)
     }
+  }
+}
+
+function assertSurfaceInventory() {
+  assertExists("docs/surface-inventory.json")
+
+  const inventory = readJson("docs/surface-inventory.json")
+  if (inventory.schema_version !== "1.0") {
+    fail("docs/surface-inventory.json schema_version must be 1.0")
+  }
+  if (inventory.repo !== "oh-my-grokbuild") {
+    fail("docs/surface-inventory.json repo must be oh-my-grokbuild")
+  }
+  if (inventory.policy?.default_surface_contract !== "/omgb-only") {
+    fail("docs/surface-inventory.json must declare the /omgb-only default surface contract")
+  }
+  if (inventory.policy?.no_execution_before_inventory_validation !== true) {
+    fail("docs/surface-inventory.json must preserve no_execution_before_inventory_validation:true")
+  }
+  if (!Array.isArray(inventory.surfaces)) {
+    fail("docs/surface-inventory.json surfaces must be an array")
+    return
+  }
+
+  const ids = new Set()
+  const defaults = []
+  let advanced = 0
+  let internal = 0
+  let deprecated = 0
+
+  for (const surface of inventory.surfaces) {
+    if (!surface.id || ids.has(surface.id)) {
+      fail(`docs/surface-inventory.json has missing/duplicate surface id: ${surface.id ?? "<missing>"}`)
+    }
+    ids.add(surface.id)
+
+    if (!surfaceKinds.has(surface.kind)) {
+      fail(`docs/surface-inventory.json surface ${surface.id} has invalid kind: ${surface.kind}`)
+    }
+    if (!surfaceClassifications.has(surface.classification)) {
+      fail(`docs/surface-inventory.json surface ${surface.id} has invalid classification: ${surface.classification}`)
+    }
+    if (typeof surface.user_invocable !== "boolean") {
+      fail(`docs/surface-inventory.json surface ${surface.id} user_invocable must be boolean`)
+    }
+    if (!surface.path || !surface.rationale || !surface.host_boundary) {
+      fail(`docs/surface-inventory.json surface ${surface.id} must include path, rationale, and host_boundary`)
+    }
+
+    if (surface.classification === "default" && surface.user_invocable) defaults.push(surface)
+    if (surface.classification === "advanced") advanced += 1
+    if (surface.classification === "internal") internal += 1
+    if (surface.classification === "deprecated") deprecated += 1
+  }
+
+  if (defaults.length !== 1 || defaults[0].path !== "skills/omgb/SKILL.md") {
+    fail("docs/surface-inventory.json must list exactly one default user-invocable surface: skills/omgb/SKILL.md")
+  }
+  if (inventory.counts?.default_user_invocable !== defaults.length) {
+    fail("docs/surface-inventory.json counts.default_user_invocable is stale")
+  }
+  if (inventory.counts?.advanced !== advanced) {
+    fail("docs/surface-inventory.json counts.advanced is stale")
+  }
+  if (inventory.counts?.internal !== internal) {
+    fail("docs/surface-inventory.json counts.internal is stale")
+  }
+  if (inventory.counts?.deprecated !== deprecated) {
+    fail("docs/surface-inventory.json counts.deprecated is stale")
+  }
+
+  const discoveredSkillFiles = walkFiles(path.join(root, "skills"))
+    .filter((file) => path.basename(file) === "SKILL.md")
+    .map((file) => path.relative(root, file))
+  const inventoriedSkillFiles = inventory.surfaces
+    .filter((surface) => surface.kind === "skill")
+    .map((surface) => surface.path)
+    .sort()
+  if (
+    discoveredSkillFiles.length !== inventoriedSkillFiles.length ||
+    discoveredSkillFiles.sort().some((file, index) => file !== inventoriedSkillFiles[index])
+  ) {
+    fail(
+      `docs/surface-inventory.json skill surfaces are stale; discovered ${discoveredSkillFiles.join(", ")} but inventoried ${inventoriedSkillFiles.join(", ")}`,
+    )
   }
 }
 
@@ -238,9 +325,12 @@ function runSmoke() {
   assertExists("scripts/ci/validate.mjs")
   assertExists("scripts/local/e2e.sh")
   assertExists("scripts/local/install-local.sh")
+  assertExists("docs/LINEAGE.md")
+  assertExists("docs/release-checklist.md")
 
   assertManifestIsSkillsOnly("plugin.json")
   assertManifestIsSkillsOnly(".claude-plugin/plugin.json")
+  assertSurfaceInventory()
 
   const payloadItems = loadLocalPayloadManifest()
   for (const item of payloadItems) {
@@ -298,6 +388,8 @@ function runSanity() {
   const indexFile = readText("agents/ROLE-INDEX.md")
   const grokDocs = readText("docs/research/grok-build-docs.md")
   const localSurvey = readText("docs/research/local-orchestration-survey.md")
+  const lineage = readText("docs/LINEAGE.md")
+  const releaseChecklist = readText("docs/release-checklist.md")
   const prd = readJson("prd.json")
 
   for (const phrase of requiredSkillPhrases) {
@@ -452,6 +544,27 @@ function runSanity() {
   }
   if (!skill.includes("[OMGB] structural e2e passed")) {
     fail("skill must document [OMGB] structural e2e passed marker")
+  }
+  for (const phrase of [
+    "/omgb",
+    "only default user-invocable",
+    "No MCP servers",
+    "hooks",
+    "source-level reuse",
+  ]) {
+    if (!lineage.includes(phrase)) {
+      fail(`docs/LINEAGE.md missing lineage/host-boundary phrase: ${phrase}`)
+    }
+  }
+  for (const phrase of [
+    "docs/surface-inventory.json",
+    "scripts/local/doctor.sh",
+    "scripts/local/install-local.sh --force",
+    "Expansion guard",
+  ]) {
+    if (!releaseChecklist.includes(phrase)) {
+      fail(`docs/release-checklist.md missing release-readiness phrase: ${phrase}`)
+    }
   }
 
   assertNoBrandLeakInScripts()

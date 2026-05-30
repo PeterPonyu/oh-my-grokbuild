@@ -39,6 +39,9 @@ scripts/local/e2e.sh             # E2E harness; set mode env for pass marker
 scripts/local/install-local.sh   # local install into ~/.grok/plugins/local
 scripts/workflow/                # fanout/team launchers and handoff export
 docs/examples/                   # sanitized committed OMGB run examples
+docs/surface-inventory.json      # /omgb-only surface inventory and classifications
+docs/LINEAGE.md                  # non-copying lineage and host-boundary notice
+docs/release-checklist.md        # release/readiness gates
 docs/research/                   # grounded research notes
 prd.json                          # task PRD with acceptance criteria
 ```
@@ -130,7 +133,7 @@ node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/
 | Check | Auth needed? | What it asserts | Lifecycle position |
 | --- | --- | --- | --- |
 | `npm run smoke` (`validate.mjs --smoke`) | none | Plugin layout: SKILL.md count, plugin manifests, agents/ and roles/ counts, no forbidden top-level dirs | Every commit / PR (CI) |
-| `npm run sanity` (`validate.mjs --sanity`) | none | Same as smoke + role frontmatter integrity + capability-mode partition + research docs + `[OMGB]` markers + ROLE-INDEX content | Every commit / PR (CI) |
+| `npm run sanity` (`validate.mjs --sanity`) | none | Same as smoke + role frontmatter integrity + capability-mode partition + research docs + `[OMGB]` markers + ROLE-INDEX content + lineage/release checklist presence | Every commit / PR (CI) |
 | `scripts/local/doctor.sh` | reads `~/.grok/` | Node version, grok CLI, auth.json, user-skill mount, 16-pair role symmetry, launcher dry-run validity | After install / when `/omgb` misbehaves |
 | `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` | reads `~/.grok/auth.json` | All of smoke + grok inspect + payload + user-skill mount + grok inspect lists `omgb` + launcher dry-run JSON validity + informational audit-all, but no live model probe | After install / structural check |
 | `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as structural e2e + a live model probe returning `OMGB_E2E_OK` | Full release gate (consumes a Grok turn) |
@@ -157,6 +160,12 @@ Expected success markers:
 - `[OMGB] structural e2e passed` for structural mode
 - `[OMGB] e2e passed` for full headless mode
 - `[OMGB] audit passed` (per run, or `[OMGB] audit passed (synthesis opt-in)` when `OMGB_ALLOW_SYNTHESIS: true` is set in `mission.md`)
+
+The committed `docs/surface-inventory.json` is the release-time inventory for
+the compact surface contract. It must keep `skills/omgb/SKILL.md` as the only
+`default` + `user_invocable` surface; launchers, validators, manifests, agents,
+and roles are advanced/internal support surfaces unless a future decision record
+explicitly changes that contract.
 
 ### Environment variables
 
