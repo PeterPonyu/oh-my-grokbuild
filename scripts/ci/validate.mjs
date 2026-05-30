@@ -246,6 +246,105 @@ function assertSurfaceInventory() {
       `docs/surface-inventory.json skill surfaces are stale; discovered ${discoveredSkillFiles.join(", ")} but inventoried ${inventoriedSkillFiles.join(", ")}`,
     )
   }
+
+  // ---------------------------------------------------------------------------
+  // Exact-file role/agent inventory coverage.
+  //
+  // Every discovered roles/*.toml and agents/*.md surface must be covered
+  // EXACTLY ONCE in the inventory. We FAIL on:
+  //   - missing   : discovered file with no matching inventory entry
+  //   - stale      : inventory entry whose file no longer exists on disk
+  //   - duplicate  : two inventory entries pointing at the same path
+  // agents/ROLE-INDEX.md is INTENTIONALLY EXCLUDED here: it is a thin internal
+  // index/doc (not an invocable agent prompt and not consumed via --agents),
+  // mirroring the runSmoke() exclusion (entry !== "ROLE-INDEX.md"). This
+  // exclusion is explicit and documented so it is not a silent coverage gap.
+  // ---------------------------------------------------------------------------
+  const discoveredRoleAgentFiles = [
+    ...(existsSync(path.join(root, "roles"))
+      ? readdirSync(path.join(root, "roles"))
+          .filter((entry) => entry.endsWith(".toml"))
+          .map((entry) => path.posix.join("roles", entry))
+      : []),
+    ...(existsSync(path.join(root, "agents"))
+      ? readdirSync(path.join(root, "agents"))
+          .filter((entry) => entry.endsWith(".md") && entry !== "ROLE-INDEX.md")
+          .map((entry) => path.posix.join("agents", entry))
+      : []),
+  ].sort()
+
+  const roleAgentSurfaces = inventory.surfaces.filter(
+    (surface) => surface.kind === "role" || surface.kind === "agent",
+  )
+
+  // Detect duplicate inventory paths among role/agent entries.
+  const seenRoleAgentPaths = new Set()
+  for (const surface of roleAgentSurfaces) {
+    if (seenRoleAgentPaths.has(surface.path)) {
+      fail(`docs/surface-inventory.json has duplicate role/agent entry for path: ${surface.path}`)
+    }
+    seenRoleAgentPaths.add(surface.path)
+  }
+
+  // Each role/agent entry must be non-default so /omgb stays the only default
+  // user-invocable surface: classification advanced|internal, not user_invocable,
+  // and explicitly first_run:false.
+  for (const surface of roleAgentSurfaces) {
+    if (surface.classification === "default") {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must not be classification:default (/omgb-only contract)`,
+      )
+    }
+    if (surface.user_invocable !== false) {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must be user_invocable:false (/omgb-only contract)`,
+      )
+    }
+    if (surface.first_run !== false) {
+      fail(
+        `docs/surface-inventory.json role/agent surface ${surface.id} must declare first_run:false (/omgb-only contract)`,
+      )
+    }
+  }
+
+  const inventoriedRoleAgentFiles = [...seenRoleAgentPaths].sort()
+
+  // Missing: discovered on disk but absent from inventory.
+  for (const file of discoveredRoleAgentFiles) {
+    if (!seenRoleAgentPaths.has(file)) {
+      fail(`docs/surface-inventory.json is MISSING a role/agent surface for discovered file: ${file}`)
+    }
+  }
+  // Stale: in inventory but file no longer exists on disk.
+  for (const file of inventoriedRoleAgentFiles) {
+    if (!discoveredRoleAgentFiles.includes(file)) {
+      fail(`docs/surface-inventory.json has a STALE role/agent surface; file no longer exists: ${file}`)
+    }
+  }
+  if (
+    discoveredRoleAgentFiles.length !== inventoriedRoleAgentFiles.length ||
+    discoveredRoleAgentFiles.some((file, index) => file !== inventoriedRoleAgentFiles[index])
+  ) {
+    fail(
+      `docs/surface-inventory.json role/agent surfaces are stale; discovered ${discoveredRoleAgentFiles.join(", ")} but inventoried ${inventoriedRoleAgentFiles.join(", ")}`,
+    )
+  }
+
+  // counts.default_agents_or_roles must equal the number of default-classified
+  // role/agent entries (which must be 0 under the /omgb-only contract).
+  const defaultRoleAgentCount = roleAgentSurfaces.filter(
+    (surface) => surface.classification === "default",
+  ).length
+  if (typeof inventory.counts?.default_agents_or_roles !== "number") {
+    fail("docs/surface-inventory.json counts.default_agents_or_roles must be a number")
+  } else if (inventory.counts.default_agents_or_roles !== defaultRoleAgentCount) {
+    fail(
+      `docs/surface-inventory.json counts.default_agents_or_roles is stale; expected ${defaultRoleAgentCount}, got ${inventory.counts.default_agents_or_roles}`,
+    )
+  }
+  if (defaultRoleAgentCount !== 0) {
+    fail("docs/surface-inventory.json must have zero default role/agent surfaces (/omgb-only contract)")
+  }
 }
 
 function parseFrontmatter(text) {

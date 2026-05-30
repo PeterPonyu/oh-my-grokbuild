@@ -37,13 +37,324 @@
       "host_boundary": "Declares exactly ../skills/omgb and no hooks/MCP/commands/agents."
     },
     {
-      "id": "roles-omgb-team",
-      "kind": "role",
-      "path": "agents/ and roles/",
+      "id": "agent-architect",
+      "kind": "agent",
+      "path": "agents/architect.md",
       "classification": "advanced",
       "user_invocable": false,
-      "rationale": "Sixteen per-role prompts/configs are activated by /omgb launchers, not default slash commands.",
-      "host_boundary": "Grok --agents inputs only; no registered agent plugin surface."
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for architect; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-architect",
+      "kind": "role",
+      "path": "roles/architect.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for architect; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-code-reviewer",
+      "kind": "agent",
+      "path": "agents/code-reviewer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for code-reviewer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-code-reviewer",
+      "kind": "role",
+      "path": "roles/code-reviewer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for code-reviewer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-codebase-scout",
+      "kind": "agent",
+      "path": "agents/codebase-scout.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for codebase-scout; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-codebase-scout",
+      "kind": "role",
+      "path": "roles/codebase-scout.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for codebase-scout; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-debugger",
+      "kind": "agent",
+      "path": "agents/debugger.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for debugger; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-debugger",
+      "kind": "role",
+      "path": "roles/debugger.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for debugger; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-executor",
+      "kind": "agent",
+      "path": "agents/executor.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for executor; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-executor",
+      "kind": "role",
+      "path": "roles/executor.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for executor; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-git-steward",
+      "kind": "agent",
+      "path": "agents/git-steward.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for git-steward; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-git-steward",
+      "kind": "role",
+      "path": "roles/git-steward.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for git-steward; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-intake-analyst",
+      "kind": "agent",
+      "path": "agents/intake-analyst.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for intake-analyst; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-intake-analyst",
+      "kind": "role",
+      "path": "roles/intake-analyst.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for intake-analyst; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-leader",
+      "kind": "agent",
+      "path": "agents/leader.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for leader; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-leader",
+      "kind": "role",
+      "path": "roles/leader.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for leader; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-performance-reviewer",
+      "kind": "agent",
+      "path": "agents/performance-reviewer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for performance-reviewer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-performance-reviewer",
+      "kind": "role",
+      "path": "roles/performance-reviewer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for performance-reviewer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-planner",
+      "kind": "agent",
+      "path": "agents/planner.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for planner; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-planner",
+      "kind": "role",
+      "path": "roles/planner.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for planner; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-researcher",
+      "kind": "agent",
+      "path": "agents/researcher.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for researcher; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-researcher",
+      "kind": "role",
+      "path": "roles/researcher.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for researcher; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-security-reviewer",
+      "kind": "agent",
+      "path": "agents/security-reviewer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for security-reviewer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-security-reviewer",
+      "kind": "role",
+      "path": "roles/security-reviewer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for security-reviewer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-test-engineer",
+      "kind": "agent",
+      "path": "agents/test-engineer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for test-engineer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-test-engineer",
+      "kind": "role",
+      "path": "roles/test-engineer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for test-engineer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-ux-reviewer",
+      "kind": "agent",
+      "path": "agents/ux-reviewer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for ux-reviewer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-ux-reviewer",
+      "kind": "role",
+      "path": "roles/ux-reviewer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for ux-reviewer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-verifier",
+      "kind": "agent",
+      "path": "agents/verifier.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for verifier; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-verifier",
+      "kind": "role",
+      "path": "roles/verifier.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for verifier; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
+    },
+    {
+      "id": "agent-writer",
+      "kind": "agent",
+      "path": "agents/writer.md",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native agent prompt for writer; activated only via /omgb launchers (--agents input), never a default slash command.",
+      "host_boundary": "Grok --agents input only; no registered agent plugin surface."
+    },
+    {
+      "id": "role-writer",
+      "kind": "role",
+      "path": "roles/writer.toml",
+      "classification": "advanced",
+      "user_invocable": false,
+      "first_run": false,
+      "rationale": "Per-role Grok-native capability config for writer; consumed by /omgb launchers (--agents), not a default slash command.",
+      "host_boundary": "Grok subagent capability config; no registered agent plugin surface."
     },
     {
       "id": "workflow-launchers",
@@ -76,7 +387,7 @@
   "counts": {
     "default_user_invocable": 1,
     "default_agents_or_roles": 0,
-    "advanced": 3,
+    "advanced": 34,
     "internal": 3,
     "deprecated": 0
   }
