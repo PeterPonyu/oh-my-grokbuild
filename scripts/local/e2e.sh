@@ -22,7 +22,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-EVIDENCE_DIR="$ROOT/.omgb/evidence"
+EVIDENCE_DIR="${OMGB_EVIDENCE_DIR:-$ROOT/.omgb/evidence}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 LOG="$EVIDENCE_DIR/e2e-$TIMESTAMP.log"
 LOCAL_INSTALL="${OMGB_LOCAL_INSTALL:-$HOME/.grok/plugins/local/oh-my-grokbuild}"
@@ -95,7 +95,108 @@ resolve_grok() {
   echo ""
 }
 
+
+run_structural_probe() {
+  step "structural mode setup (no credentials)"
+  STRUCT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/omgb-structural.XXXXXX")"
+  trap 'rm -rf "$PROBE_RUNS_ROOT" "$STRUCT_TMP"' EXIT
+
+  FAKE_BIN_DIR="$STRUCT_TMP/bin"
+  mkdir -p "$FAKE_BIN_DIR"
+  cat >"$FAKE_BIN_DIR/grok" <<'FAKEGROK'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version)
+    echo "grok fake structural 0.0.0"
+    exit 0
+    ;;
+  inspect)
+    echo "skills"
+    echo "  └ omgb user"
+    exit 0
+    ;;
+  *)
+    echo "OMGB_E2E_OK"
+    exit 0
+    ;;
+esac
+FAKEGROK
+  chmod +x "$FAKE_BIN_DIR/grok"
+  export PATH="$FAKE_BIN_DIR:$PATH"
+  GROK_BIN="$FAKE_BIN_DIR/grok"
+  ok "using fake grok binary for credential-free structural checks: $GROK_BIN"
+
+  step "local payload structure (repository checkout)"
+  LOCAL_INSTALL="${OMGB_LOCAL_INSTALL:-$ROOT}"
+  if [[ ! -d "$LOCAL_INSTALL" ]]; then
+    fail "structural payload root missing at $LOCAL_INSTALL"
+  fi
+  while IFS= read -r item || [[ -n "$item" ]]; do
+    [[ "$item" =~ ^#.*$ || -z "$item" ]] && continue
+    validate_payload_item "$item"
+    item_path="${item%/}"
+    if [[ ! -e "$LOCAL_INSTALL/$item_path" ]]; then
+      fail "structural payload missing $item_path (listed in local-payload.txt)"
+    fi
+  done < "$ROOT/local-payload.txt"
+  ok "repository payload matches local-payload.txt"
+
+  step "subagent team launcher (dry-run, fake/no credential path)"
+  set +e
+  bash "$ROOT/scripts/workflow/launch-omgb-team.sh" structural-team-probe "structural team JSON probe" >>"$LOG" 2>&1
+  LAUNCH_RC=$?
+  set -e
+  if [[ $LAUNCH_RC -ne 0 ]]; then
+    fail "launch-omgb-team.sh structural dry-run failed with code $LAUNCH_RC"
+  fi
+  PROBE_CFG="$OMGB_RUNS_ROOT/structural-team-probe/agents-config.json"
+  if ! node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16){process.exit(2)}" "$PROBE_CFG" >>"$LOG" 2>&1; then
+    fail "structural launcher produced JSON but it does not contain exactly 16 roles"
+  fi
+  ok "launcher emitted a valid 16-role agents JSON ($PROBE_CFG)"
+
+  step "APR fan-out launcher (dry-run, fake/no credential path)"
+  set +e
+  APR_OUT=$(bash "$ROOT/scripts/workflow/launch-omgb-fanout.sh" structural-apr-probe "structural APR cohort probe" --phase apr 2>&1)
+  APR_RC=$?
+  set -e
+  printf "%s\n" "$APR_OUT" >>"$LOG"
+  if [[ $APR_RC -ne 0 ]]; then
+    fail "launch-omgb-fanout.sh structural dry-run failed with code $APR_RC"
+  fi
+  for role in code-reviewer security-reviewer performance-reviewer ux-reviewer architect; do
+    if ! printf "%s\n" "$APR_OUT" | grep -q "$role"; then
+      fail "structural APR cohort missing required role $role"
+    fi
+  done
+  if ! printf "%s\n" "$APR_OUT" | grep -q "Rerun with --launch to fork 5 parallel grok subprocesses"; then
+    fail "structural APR cohort did not declare exactly 5 parallel subprocesses"
+  fi
+  ok "APR fan-out plans the 5-role adversarial cohort"
+
+  step "state/evidence audit (informational)"
+  set +e
+  node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
+  AUDIT_RC=$?
+  set -e
+  if [[ $AUDIT_RC -eq 0 ]]; then
+    ok "all completed runs pass the subagent-evidence audit"
+  else
+    log "INFO: existing runs do not yet have subagent-spawn evidence (legacy synthesis); see audit findings in $LOG"
+  fi
+
+  step "fake headless reachability"
+  run_headless_probe
+
+  log "[OMGB] structural e2e passed"
+}
+
 main() {
+  if [[ "${OMGB_E2E_STRUCTURAL:-0}" = "1" ]]; then
+    run_structural_probe
+    return 0
+  fi
+
   step "auth check"
   if [[ ! -s "$AUTH_FILE" ]]; then
     fail "missing or empty $AUTH_FILE. Log in to Grok first via 'grok login'."
