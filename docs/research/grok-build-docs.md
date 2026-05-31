@@ -10,7 +10,7 @@ Date: 2026-05-20
 ## Local Grok Client
 
 This research was performed against the Grok Build CLI installed on this
-machine at `/home/zeyufu/.grok/bin/grok`. Reported version: `0.1.212`.
+machine at `~/.grok/bin/grok`. Reported version: `0.1.212`.
 
 `grok --help` documents the following relevant flags:
 
