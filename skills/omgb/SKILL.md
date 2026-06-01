@@ -216,10 +216,11 @@ autonomous up to Finalization.
 The leader stops and asks the user in exactly these cases:
 
 1. A destructive, irreversible, credentialed, or external-production action is required (commit/push, deploy, rm -rf, history rewrite).
-2. The user gave conflicting or missing requirements that the intake-analyst could not resolve (intake's blocking question).
-3. `state.json.blockers` contains a real blocker that needs a human decision (e.g., missing credentials, contradictory acceptance criteria, subagent-spawn-unavailable without synthesis opt-in).
-4. Three review rounds REQUEST CHANGES on the same item.
-5. The same verification command fails three times.
+2. Execution (Phase 3) is about to begin: the leader presents the finalized plan plus any APR findings and waits for explicit user approval before writing any production code (the Phase 3 consent gate).
+3. The user gave conflicting or missing requirements that the intake-analyst could not resolve (intake's blocking question).
+4. `state.json.blockers` contains a real blocker that needs a human decision (e.g., missing credentials, contradictory acceptance criteria, subagent-spawn-unavailable without synthesis opt-in).
+5. Three review rounds REQUEST CHANGES on the same item.
+6. The same verification command fails three times.
 
 ### Never stop because
 
@@ -264,6 +265,7 @@ If an active run exists for the same slug, resume it instead of starting over.
   "updatedAt": "ISO-8601 timestamp",
   "taskSlug": "example-task",
   "activeRoles": [],
+  "ambiguityScore": "low",
   "qaCycles": 0,
   "reviewRounds": 0,
   "blockers": [],
@@ -277,6 +279,13 @@ If an active run exists for the same slug, resume it instead of starting over.
 Append one entry to `state.json.phases` every time you transition out of a
 phase. `duration_ms = Date.parse(completed) - Date.parse(started)`. The audit
 sanity-checks the array exists when `phase` is `complete`.
+
+`ambiguityScore` is one of `"low"`, `"medium"`, or `"high"`, mirrored from the
+intake-analyst's `## Ambiguity` section in `mission.md`. The leader records it
+at the end of Phase 0. The audit parses `mission.md`'s ambiguity section and
+reports the score; when the score is `high` and the blocking question is still
+unresolved, the audit emits an `ADVISORY` line (not a hard failure) so the
+leader surfaces the residual ambiguity rather than silently proceeding.
 
 `tasks.json` should contain role-owned tasks:
 
@@ -293,6 +302,29 @@ sanity-checks the array exists when `phase` is `complete`.
   ]
 }
 ```
+
+### Durable Event Ledger (advanced, optional)
+
+For long or resumable runs, the leader MAY maintain an append-only durable
+ledger at `.grok/omgb/runs/<task-slug>/events.jsonl`. Each line is one JSON
+event:
+
+```json
+{"timestamp": "ISO-8601", "phase": "execution", "action": "spawn:executor", "activeRoles": ["executor"], "blockers": []}
+```
+
+Rules:
+
+- Append-only: never rewrite or truncate. One JSON object per line (JSONL).
+- Each event records `timestamp`, `phase`, `action`, the `activeRoles` array,
+  and the current `blockers` array at that moment.
+- The ledger is OPTIONAL. It is a complementary consistency source: the audit
+  (`scripts/ci/check-subagent-evidence.mjs`) reads it when present, reports the
+  event count, and emits an `ADVISORY` only if a line is malformed JSON. The
+  ledger never causes a hard audit failure on its own.
+
+This is an advanced feature for durability across compaction, resume, and
+machine swaps. Runs that do not need it omit the file entirely.
 
 ## Role Catalog
 
@@ -431,6 +463,24 @@ This is OMGB's plan-hardening gate. Five review-eligible roles are spawned in a 
 If the trigger keywords are absent and the launcher did not request APR, the leader skips this phase silently (no evidence overhead).
 
 ### Phase 3: Execution
+
+**Consent gate (mandatory before any code is written).** Before spawning the
+first executor, the leader presents the finalized plan to the user and waits
+for explicit approval:
+
+1. Present the finalized `tasks.json` plan (task ids, owners, scenarios) plus any
+   APR findings from Phase 2.5 (`CONSTRAINT` / `RISK` / `ALTERNATIVE` / `BLOCKER`
+   distillations) in a concise summary.
+2. Ask for explicit approval to begin Execution. Wait for a clear "yes / approved
+   / proceed" from the user before any production file is touched.
+3. Do not start Execution on silence, on an ambiguous reply, or by inferring
+   consent from the original request. If the user requests changes, return to
+   Phase 2 / Phase 2.5 and re-present.
+
+This gate is consistent with the "ask before destructive actions" rule: writing
+or mutating production code is the first irreversible step of the run, so the
+user owns the go/no-go decision. It is the one user checkpoint that the
+otherwise-autonomous No-Stop-Between-Phases contract preserves before Execution.
 
 1. Spawn `executor` to implement scoped tasks.
 2. Spawn `debugger` for failures and failing tests.

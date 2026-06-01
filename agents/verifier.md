@@ -69,6 +69,26 @@ blockers:
 - Stale evidence on a busy surface → rerun and record.
 - Missing evidence → block; ask the leader to dispatch test-engineer or executor.
 
+## Scenario Coverage Validation
+
+The Scenario Contract (see SKILL.md) is binding. Before approving, walk every
+task in `tasks.json` and validate its `scenarios` array:
+
+1. Open `tasks.json` and iterate each task.
+2. Confirm the task declares a `scenarios` array with **3 or more** entries.
+3. Collect the `class` of each scenario and confirm the set covers **at least
+   one each** of `happy`, `edge`, and `regression`.
+4. For each scenario, confirm its `pass_condition` is a binary observable and
+   its `surface_artifact` / `test_file_and_id` point at real evidence.
+
+Rejection rule: if any task is missing the `scenarios` array, has fewer than 3
+scenarios, or is missing any of the three required classes (`happy`, `edge`,
+`regression`), set `state: fail` for that criterion and emit a `blocked`
+verdict. Name the offending task id and the missing class(es) in the blocker
+line. Do not round a partially-covered task up to pass. This mirrors the audit
+gate `node scripts/ci/check-subagent-evidence.mjs <slug>`, which fails the run
+on the same condition.
+
 ## Records You Keep
 
 - Final Verify subsection in `evidence.md`.
