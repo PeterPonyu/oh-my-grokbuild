@@ -92,7 +92,8 @@ node scripts/ci/validate.mjs --smoke
 node scripts/ci/validate.mjs --sanity
 npm test
 OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh  # structural check
-OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh              # full live check
+OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh              # live Grok reachability check
+OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh  # opt-in real /omgb quota check
 scripts/local/verify-robust-install.sh   # validates payload, symlinks, and drift detection
 ```
 
@@ -137,7 +138,8 @@ node scripts/ci/validate.mjs --audit-all          # bulk-audit every .grok/omgb/
 | `npm run sanity` (`validate.mjs --sanity`) | none | Same as smoke + role frontmatter integrity + capability-mode partition + research docs + `[OMGB]` markers + ROLE-INDEX content + lineage/release checklist presence | Every commit / PR (CI) |
 | `scripts/local/doctor.sh` | reads `~/.grok/` | Node version, grok CLI, auth.json, user-skill mount, 16-pair role symmetry, launcher dry-run validity | After install / when `/omgb` misbehaves |
 | `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` | reads `~/.grok/auth.json` | All of smoke + grok inspect + payload + user-skill mount + grok inspect lists `omgb user` + launcher dry-run JSON validity + informational canonical-run audit, but no live model probe | After install / structural check |
-| `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as structural e2e + a live model probe returning `OMGB_E2E_OK` | Full release gate (consumes a Grok turn) |
+| `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` | invokes `grok -p` | Same as structural e2e + a live model reachability probe returning `OMGB_E2E_OK`; this does **not** prove `/omgb` completed | Live reachability gate (consumes a Grok turn) |
+| `OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh` | invokes `grok -p "/omgb ..."` in an isolated HOME | Same as headless e2e + an actual `/omgb` slash-skill invocation, isolated from global MCP/plugin noise, requiring non-empty stdout and `OMGB_REAL_OMGB_OK` | Opt-in full `/omgb` gate (consumes additional Grok quota) |
 | `validate.mjs --audit-run <slug>` | reads `~/.grok/sessions/` | Each `state.json.activeRoles` has a `## Subagent:` block with valid spawn_method, worker markers, phase, cohort; spawn timing **cross-checked against the Grok session transcript** (events.jsonl); review.md verdicts come from real spawns | Inside a Grok run before Finalization; CI on any merged run dir |
 | `validate.mjs --audit-all` | reads `~/.grok/sessions/` | Same as audit-run but across every `.grok/omgb/runs/<slug>/`; skips incomplete probe dirs without `state.json` | Periodic CI sweep |
 
@@ -151,10 +153,18 @@ Use `--audit-run <slug>` as the strict gate for a claimed run; bulk
 `--audit-all` may skip dry-run/probe directories that were never completed
 runs.
 
-Optional live headless probe (consumes a real Grok turn):
+Optional live headless probe (consumes a real Grok turn and proves Grok reachability):
 
 ```bash
 OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh
+```
+
+<!-- OMGB_REAL_OMGB_GATE_DOCS -->
+
+Optional real `/omgb` probe (consumes additional real Grok quota and proves the slash skill returns a final answer):
+
+```bash
+OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh
 ```
 
 Expected success markers:
@@ -163,6 +173,7 @@ Expected success markers:
 - `[OMGB] sanity passed`
 - `[OMGB] structural e2e passed` for structural mode
 - `[OMGB] e2e passed` for full headless mode
+- `OMGB_REAL_OMGB_OK` inside the e2e log when `OMGB_E2E_REAL_OMGB=1` is set
 - `[OMGB] audit passed` (per run, or `[OMGB] audit passed (synthesis opt-in)` when `OMGB_ALLOW_SYNTHESIS: true` is set in `mission.md`)
 
 The committed `docs/surface-inventory.json` is the release-time inventory for
@@ -175,7 +186,9 @@ explicitly changes that contract.
 
 | Env var | Default | Effect |
 | --- | --- | --- |
-| `OMGB_E2E_HEADLESS` | unset | Set to `1` to enable the live model probe in `scripts/local/e2e.sh` (consumes a real Grok turn). |
+| `OMGB_E2E_HEADLESS` | unset | Set to `1` to enable the live model reachability probe in `scripts/local/e2e.sh` (consumes a real Grok turn; does not invoke `/omgb` by itself). |
+| `OMGB_E2E_REAL_OMGB` | unset | Set to `1` together with `OMGB_E2E_HEADLESS=1` to run an isolated real `/omgb` headless probe that must emit `OMGB_REAL_OMGB_OK` (consumes additional Grok quota). |
+| `OMGB_E2E_REAL_OMGB_TIMEOUT` | `180` | Timeout in seconds for the opt-in real `/omgb` probe. |
 | `OMGB_E2E_STRICT_AUDIT` | unset | Set to `1` to make `scripts/local/e2e.sh` fail when the canonical `~/.grok/omgb/runs` audit has findings; useful for release gating. |
 | `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (structural check only). |
 | `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis as a fallback when subagents are unavailable. |

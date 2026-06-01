@@ -7,7 +7,7 @@
   "scripts": {
     "smoke": "node scripts/ci/validate.mjs --smoke",
     "sanity": "node scripts/ci/validate.mjs --sanity",
-    "test": "npm run smoke && npm run sanity && node scripts/ci/test-state-io.mjs && bash scripts/ci/test-headless-gate.sh && bash scripts/ci/test-temp-link-cleanup.sh && bash scripts/ci/test-launcher-modes.sh",
+    "test": "npm run smoke && npm run sanity && node scripts/ci/test-state-io.mjs && bash scripts/ci/test-headless-gate.sh && bash scripts/ci/test-real-omgb-evidence.sh && bash scripts/ci/test-temp-link-cleanup.sh && bash scripts/ci/test-launcher-modes.sh",
     "e2e:structural": "OMGB_E2E_STRUCTURAL=1 bash scripts/local/e2e.sh",
     "e2e:headless": "OMGB_E2E_HEADLESS=1 bash scripts/local/e2e.sh",
     "verify": "npm test && npm run e2e:structural"

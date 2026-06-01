@@ -21,6 +21,7 @@ Use this checklist before tagging or sharing an `oh-my-grokbuild` release candid
 
 - [ ] `OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh` passes for structural verification.
 - [ ] `OMGB_E2E_HEADLESS=1 OMGB_E2E_STRICT_AUDIT=1 scripts/local/e2e.sh` passes before a full release when a credentialed Grok session is available.
+- [ ] `OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 OMGB_E2E_STRICT_AUDIT=1 scripts/local/e2e.sh` passes for a release candidate that needs proof of actual `/omgb` slash-skill execution, not only Grok reachability.
 - [ ] At least one representative completed run passes `node scripts/ci/validate.mjs --audit-run <slug>`; do not count `--audit-all` skipped probe dirs as completed evidence.
 
 ## Expansion guard

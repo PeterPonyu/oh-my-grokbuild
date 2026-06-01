@@ -644,6 +644,9 @@ function runSanity() {
   if (!skill.includes("[OMGB] structural e2e passed")) {
     fail("skill must document [OMGB] structural e2e passed marker")
   }
+  if (!readText("README.md").includes("OMGB_REAL_OMGB_GATE_DOCS") || !readText("docs/RUNTIME-AUDIT-FIXMENTS.md").includes("OMGB_REAL_OMGB_GATE_DOCS")) {
+    fail("docs must include stable OMGB_REAL_OMGB_GATE_DOCS markers for the opt-in real /omgb quota gate")
+  }
   for (const phrase of [
     "/omgb",
     "only default user-invocable",
@@ -1015,6 +1018,15 @@ function assertRuntimeReportingContracts() {
   if (!e2eScript.includes('OMGB_E2E_STRICT_AUDIT')) {
     fail("scripts/local/e2e.sh must support strict canonical audit gating for releases")
   }
+  if (!e2eScript.includes('OMGB_E2E_REAL_OMGB') || !e2eScript.includes('OMGB_REAL_OMGB_OK')) {
+    fail("scripts/local/e2e.sh must provide an opt-in real /omgb quota gate, not only a generic headless token probe")
+  }
+  if (!e2eScript.includes('--cwd "$real_workspace"') || !e2eScript.includes('--tools read_file,list_dir,grep') || !e2eScript.includes('mktemp -d "${TMPDIR:-/tmp}/omgb-real-omgb.XXXXXX"') || !e2eScript.includes('env -i "HOME=$real_home"') || !e2eScript.includes('HTTP_PROXY HTTPS_PROXY NO_PROXY')) {
+    fail("real /omgb e2e must run in a scrubbed isolated HOME and temporary workspace with read-only tools")
+  }
+  if (!e2eScript.includes('git ls-files -z | tar --null -T - -cf -') || !e2eScript.includes('--dry-run') || !e2eScript.includes('timeout "${OMGB_E2E_REAL_OMGB_TIMEOUT:-180}"') || !e2eScript.includes('final_line=') || !e2eScript.includes('real_omgb_transcript_has_skill_evidence') || !e2eScript.includes('synthetic_reason') || !e2eScript.includes('<skill_information>')) {
+    fail("real /omgb e2e must copy the workspace, explicitly dry-run JSON generation, require a final marker, and verify non-user /omgb transcript evidence")
+  }
   if (e2eScript.includes('^\\s+└\\s+omgb\\s+user\\s*$')) {
     fail("scripts/local/e2e.sh must not depend on exact grok inspect tree-glyph formatting")
   }
@@ -1035,6 +1047,9 @@ function assertRuntimeReportingContracts() {
   }
   if (!readText("package.json").includes("scripts/ci/test-launcher-modes.sh")) {
     fail("npm test must include behavioral launcher mode checks for explicit --dry-run and mixed launch flags")
+  }
+  if (!readText("package.json").includes("scripts/ci/test-real-omgb-evidence.sh") || !existsSync(path.join(root, "scripts", "ci", "test-real-omgb-evidence.sh"))) {
+    fail("npm test must include a negative transcript-evidence regression test for the real /omgb gate")
   }
   if (!e2eScript.includes('local plugin payload may not appear as an enabled plugin')) {
     fail("scripts/local/e2e.sh must clarify user-skill mount vs enabled-plugin listing semantics")

@@ -150,3 +150,14 @@ check before trusting a run.
   target still exists; never remove durable non-temp archive links automatically.
 - **Routine:** Test with a custom temp `OMGB_RUNS_ROOT`, delete it, then run
   doctor/e2e and assert no broken repo-local symlinks remain.
+
+<!-- OMGB_REAL_OMGB_GATE_DOCS -->
+
+## 9. Real quota e2e did not prove `/omgb` itself completed
+
+- **What:** `OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh` spent real Grok quota on a literal `OMGB_E2E_OK` reachability prompt, but it did not invoke the `/omgb` slash skill. A manual `/omgb` run in the normal user HOME also exposed unrelated global host noise (MCP/auth failures), and an isolated HOME run initially produced an empty stdout when terminal verification was cancelled.
+- **Why:** The original e2e gate conflated “Grok can answer a headless prompt” with “the OMGB skill can load and finalize a response.” It also ran in the user’s full Grok environment, where unrelated MCP/plugin state can obscure OMGB-specific evidence.
+- **How fixed:** `scripts/local/e2e.sh` now has opt-in `OMGB_E2E_REAL_OMGB=1`. That mode creates an isolated temporary HOME plus a temporary copy of the repository, copies the existing auth token, installs OMGB from the temp copy, verifies `grok inspect` sees `omgb user`, generates a 16-role `--agents` JSON, then invokes `grok -p "/omgb ..."` in the temp workspace with read-only tools. The gate fails on non-zero exit, empty stdout, a missing final `OMGB_REAL_OMGB_OK`, missing `/omgb` skill transcript evidence, or host cancellation/auth/MCP errors.
+- **Evidence:** `OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh` must log `real /omgb probe returned OMGB_REAL_OMGB_OK`; the regular headless mode remains a cheaper Grok reachability check only.
+- **Future design:** Keep real quota gates opt-in and explicit. Do not hide additional model turns inside `npm test` or default e2e. Prefer isolated HOME plus a temporary workspace for slash-skill e2e so global plugins/MCPs do not produce false OMGB failures and a misbehaving probe cannot mutate the live checkout.
+- **Routine:** For release candidates, run both the standard headless e2e and the opt-in real `/omgb` e2e. If the real gate fails, inspect the saved e2e log and copied session evidence before accepting any “plugin works” claim.

@@ -32,6 +32,7 @@ mkdir -p "$EVIDENCE_DIR"
 PROBE_TMP_PARENT="$(cd "${TMPDIR:-/tmp}" && pwd)"
 PROBE_RUNS_ROOT="$(mktemp -d "$PROBE_TMP_PARENT/omgb-e2e-runs.XXXXXX")"
 STRUCT_TMP=""
+REAL_OMGB_TMP=""
 cleanup_probe_runs() {
   # launch-omgb-{team,fanout}.sh creates repo-local .grok/omgb/runs/<slug>
   # symlinks to OMGB_RUNS_ROOT. Probe roots are temporary, so remove only the
@@ -42,7 +43,7 @@ cleanup_probe_runs() {
       local target
       target="$(readlink "$link" 2>/dev/null || true)"
       case "$target" in
-        "$PROBE_RUNS_ROOT"/*|"${STRUCT_TMP:-__omgb_no_struct_tmp__}"/*)
+        "$PROBE_RUNS_ROOT"/*|"${STRUCT_TMP:-__omgb_no_struct_tmp__}"/*|"${REAL_OMGB_TMP:-__omgb_no_real_tmp__}"/*)
           rm -f -- "$link"
           ;;
         /tmp/omgb-*/*|"$PROBE_TMP_PARENT"/omgb-*/*)
@@ -58,6 +59,9 @@ cleanup_probe_runs() {
   rm -rf "$PROBE_RUNS_ROOT"
   if [[ -n "${STRUCT_TMP:-}" ]]; then
     rm -rf "$STRUCT_TMP"
+  fi
+  if [[ -n "${REAL_OMGB_TMP:-}" ]]; then
+    rm -rf "$REAL_OMGB_TMP"
   fi
 }
 trap cleanup_probe_runs EXIT
@@ -110,6 +114,152 @@ run_headless_probe() {
     fail "grok headless probe did not echo the expected token"
   fi
   ok "headless probe returned OMGB_E2E_OK (exit $HEADLESS_RC)"
+}
+
+
+real_omgb_transcript_has_skill_evidence() {
+  local sessions_root="$1"
+  python3 - "$sessions_root" <<'PY_EVIDENCE'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+marker = "# OMGB - Oh My Grok Build Orchestrator"
+if not root.exists():
+    sys.exit(1)
+
+for chat_path in root.rglob("chat_history.jsonl"):
+    try:
+        lines = chat_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        continue
+    for line in lines:
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        # The real user query, assistant output, and tool output are not proof
+        # that the slash skill loaded. Accept only Grok-injected skill context:
+        # either synthetic user context, or the explicit <skill_information>
+        # envelope Grok records with the user turn after resolving /omgb.
+        if msg.get("type") != "user":
+            continue
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = repr(content)
+        has_synthetic_context = "synthetic_reason" in msg
+        has_skill_envelope = "<skill_information>" in content and '<skill name="omgb"' in content
+        if (has_synthetic_context or has_skill_envelope) and marker in content:
+            sys.exit(0)
+
+sys.exit(1)
+PY_EVIDENCE
+}
+
+run_real_omgb_probe() {
+  step "real /omgb headless probe (isolated HOME; consumes real Grok quota)"
+
+  REAL_OMGB_TMP="$(mktemp -d "${TMPDIR:-/tmp}/omgb-real-omgb.XXXXXX")"
+  local real_home="$REAL_OMGB_TMP/home"
+  local real_workspace="$REAL_OMGB_TMP/workspace"
+  local real_runs_root="$real_home/.grok/omgb/runs"
+  local slug="real-omgb-e2e-$TIMESTAMP"
+  local stdout_file="$REAL_OMGB_TMP/stdout.txt"
+  local stderr_file="$REAL_OMGB_TMP/stderr.txt"
+  local agents_json
+
+  mkdir -p "$real_home/.grok" "$real_runs_root" "$real_workspace"
+  cp "$AUTH_FILE" "$real_home/.grok/auth.json"
+
+  local clean_env
+  clean_env=(env -i "HOME=$real_home" "PATH=$PATH" "TERM=${TERM:-dumb}")
+  for env_name in USER LOGNAME USERNAME XDG_RUNTIME_DIR XDG_CONFIG_DIRS XDG_DATA_DIRS HTTP_PROXY HTTPS_PROXY NO_PROXY http_proxy https_proxy no_proxy SSL_CERT_FILE SSL_CERT_DIR; do
+    if [[ -n "${!env_name:-}" ]]; then
+      clean_env+=("$env_name=${!env_name}")
+    fi
+  done
+
+  step "real /omgb temporary workspace copy"
+  if ! (cd "$ROOT" && git ls-files -z | tar --null -T - -cf -) | tar -xf - -C "$real_workspace"; then
+    fail "real /omgb probe could not create temporary workspace copy"
+  fi
+  ok "real /omgb probe workspace copied to temporary directory"
+
+  step "real /omgb isolated install"
+  if ! "${clean_env[@]}" bash "$real_workspace/scripts/local/install-local.sh" --force >>"$LOG" 2>&1; then
+    fail "real /omgb probe could not install OMGB into isolated HOME"
+  fi
+
+  step "real /omgb isolated inspect"
+  set +e
+  local isolated_inspect
+  isolated_inspect="$("${clean_env[@]}" "$GROK_BIN" inspect 2>&1)"
+  local isolated_inspect_rc=$?
+  set -e
+  printf "%s\n" "$isolated_inspect" >>"$LOG"
+  if [[ $isolated_inspect_rc -ne 0 && $isolated_inspect_rc -ne 2 ]]; then
+    fail "real /omgb isolated grok inspect failed with code $isolated_inspect_rc"
+  fi
+  if ! printf "%s\n" "$isolated_inspect" | grep -Eq '(^|[^[:alnum:]_-])omgb[[:space:]]+user([^[:alnum:]_-]|$)'; then
+    fail "real /omgb isolated grok inspect did not list omgb as a user skill"
+  fi
+  ok "isolated grok inspect lists omgb as a user skill"
+
+  step "real /omgb agents JSON generation"
+  if ! OMGB_RUNS_ROOT="$real_runs_root" bash "$real_workspace/scripts/workflow/launch-omgb-team.sh" "$slug" "real /omgb e2e agents JSON probe" --dry-run >>"$LOG" 2>&1; then
+    fail "real /omgb probe could not generate team agents JSON"
+  fi
+  if ! node -e "const c=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')); if(Object.keys(c).length!==16) process.exit(2)" "$real_runs_root/$slug/agents-config.json" >>"$LOG" 2>&1; then
+    fail "real /omgb probe agents JSON does not contain exactly 16 roles"
+  fi
+  agents_json="$(tr -d '\n' < "$real_runs_root/$slug/agents-config.json")"
+
+  step "real /omgb invocation"
+  set +e
+  timeout "${OMGB_E2E_REAL_OMGB_TIMEOUT:-180}" "${clean_env[@]}" "$GROK_BIN" -s "omgb-$slug" --cwd "$real_workspace" --no-alt-screen \
+    --always-approve --permission-mode auto --max-turns 20 \
+    --tools read_file,list_dir,grep --output-format plain \
+    -p "/omgb Real quota OMGB e2e probe. Do not edit files, do not commit, do not push. Do not run npm or shell verification; only inspect README.md, the OMGB skill body, and package.json using read/list tools if needed. Confirm /omgb skill is loaded and the 16-role agents JSON is available. Finish your final answer with the exact marker OMGB_REAL_OMGB_OK." \
+    --agents "$agents_json" >"$stdout_file" 2>"$stderr_file"
+  local real_rc=$?
+  set -e
+
+  {
+    printf "\n--- real /omgb stdout (%s) ---\n" "$slug"
+    cat "$stdout_file"
+    printf "\n--- real /omgb stderr (%s) ---\n" "$slug"
+    cat "$stderr_file"
+  } >>"$LOG"
+
+  if [[ $real_rc -ne 0 ]]; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb invocation exited with code $real_rc; session copy saved under $EVIDENCE_DIR if available"
+  fi
+  if [[ ! -s "$stdout_file" ]]; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb invocation returned empty stdout despite exit 0"
+  fi
+  local final_line
+  final_line="$(awk 'NF { line=$0 } END { print line }' "$stdout_file")"
+  if [[ "$final_line" != "OMGB_REAL_OMGB_OK" ]]; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb invocation did not finish with final marker OMGB_REAL_OMGB_OK"
+  fi
+  if ! grep -R -q '/omgb Real quota OMGB e2e probe' "$real_home/.grok/sessions" 2>/dev/null; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb session transcript does not contain the /omgb user query"
+  fi
+  if ! real_omgb_transcript_has_skill_evidence "$real_home/.grok/sessions"; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb session transcript does not show non-user OMGB skill payload evidence"
+  fi
+  if grep -qi 'cancelled\|AuthRequired\|Failed to spawn MCP server\|Transport channel closed' "$stdout_file" "$stderr_file"; then
+    cp -R "$real_home/.grok/sessions" "$EVIDENCE_DIR/real-omgb-sessions-$TIMESTAMP" 2>/dev/null || true
+    fail "real /omgb invocation contains host cancellation/auth/MCP errors"
+  fi
+
+  ok "real /omgb probe returned final OMGB_REAL_OMGB_OK with /omgb skill transcript evidence (exit $real_rc)"
 }
 
 
@@ -368,6 +518,10 @@ main() {
     return 0
   else
     fail "headless reachability was not run; set OMGB_E2E_HEADLESS=1 for full E2E or OMGB_E2E_ALLOW_HEADLESS_SKIP=1 for structural-only validation"
+  fi
+
+  if [[ "${OMGB_E2E_REAL_OMGB:-0}" = "1" ]]; then
+    run_real_omgb_probe
   fi
 
   log "[OMGB] e2e passed"
