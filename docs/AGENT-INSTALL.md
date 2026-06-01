@@ -50,6 +50,7 @@ npm test                                   # smoke + sanity
 OMGB_E2E_ALLOW_HEADLESS_SKIP=1 ./scripts/local/e2e.sh  # structural: login + mount + launcher JSON
 OMGB_E2E_HEADLESS=1 ./scripts/local/e2e.sh              # live Grok reachability probe
 OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 ./scripts/local/e2e.sh  # opt-in real /omgb quota probe
+npm run e2e:real-omgb
 ```
 
 **Tip:** After any repo move or re-clone, running `install-local.sh --force` from the new location + `doctor.sh` is the reliable way to heal the mount.
@@ -139,7 +140,8 @@ For agents that prefer JSON:
     "npm test",
     "OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh",
     "OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh",
-    "OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh"
+    "OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh",
+    "npm run e2e:real-omgb"
   ],
   "launch_command": "scripts/workflow/launch-omgb-team.sh <slug> \"<task>\" --launch",
   "audit_command": "node scripts/ci/validate.mjs --audit-run <slug>",

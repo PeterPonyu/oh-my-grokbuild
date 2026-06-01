@@ -83,11 +83,12 @@ echo
 echo "=== Verification Summary ==="
 pass "All static and doctor checks passed for current tree"
 info "Next manual step (when ready): run the full relocation scenario in docs/REPO-RELOCATION-TEST.md"
-info "When that passes + full headless e2e passes, the robust install verification is complete."
+info "When that passes + live headless e2e passes, the robust install verification is complete; add the real /omgb probe before release or handoff claims."
 
 echo
-echo "To run the full e2e (requires auth and a live headless turn):"
+echo "To run live e2e checks (requires auth and consumes Grok quota):"
 echo "  OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh"
+echo "  OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh   # proves /omgb slash-skill execution"
 echo
 echo "To run the relocation test:"
 echo "  See docs/REPO-RELOCATION-TEST.md"

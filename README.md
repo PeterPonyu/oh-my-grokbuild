@@ -94,6 +94,7 @@ npm test
 OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh  # structural check
 OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh              # live Grok reachability check
 OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh  # opt-in real /omgb quota check
+npm run e2e:real-omgb                              # same real /omgb gate via npm
 scripts/local/verify-robust-install.sh   # validates payload, symlinks, and drift detection
 ```
 
@@ -165,6 +166,8 @@ Optional real `/omgb` probe (consumes additional real Grok quota and proves the 
 
 ```bash
 OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh
+# or
+npm run e2e:real-omgb
 ```
 
 Expected success markers:
@@ -195,6 +198,26 @@ explicitly changes that contract.
 | `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. Subagents whose recorded duration exceeds this value print a `WARN` line in the audit report. WARN-only; does not change exit code. |
 | `OMGB_RUNS_ROOT` | `~/.grok/omgb/runs` | Overrides where state-io, launchers, exporter, and auditor read/write OMGB run directories. Useful for hermetic tests and CI probes. |
 | `OMGB_SESSIONS_ROOT` | `~/.grok/sessions` | Overrides where the auditor looks for Grok session transcripts (`summary.json` / `events.jsonl`). |
+
+
+### What can still block a pleasant real-user run?
+
+The local gates prove install/discovery, Grok reachability, and a real `/omgb`
+slash-skill invocation on this machine. They do not eliminate every external
+source of friction. Remaining blockers are operational rather than hidden local
+test gaps:
+
+- **Credential or quota state:** `~/.grok/auth.json` can expire, rate-limit, or
+  lack quota. Re-run `scripts/local/doctor.sh` and the live e2e when in doubt.
+- **Host Grok behavior changes:** future Grok builds may change skill injection,
+  `--agents`, session transcript shape, or allowed tool names. The real `/omgb`
+  gate is designed to fail loudly if that happens.
+- **Full team execution is task-dependent:** the real `/omgb` probe proves the
+  slash skill loads and answers under real quota; complex multi-role work still
+  needs a completed run plus `validate.mjs --audit-run <slug>`.
+- **Remote readiness is separate:** local commits are not proof that GitHub CI,
+  a pushed branch, or another machine has the same auth/Grok version. Run the
+  release checklist before tagging or sharing.
 
 ## Mandatory Subagent Spawning (v0.2.0+)
 

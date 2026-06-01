@@ -997,6 +997,7 @@ function assertScenarioCoveragePasses() {
 function assertRuntimeReportingContracts() {
   const e2eScript = readText("scripts/local/e2e.sh")
   const doctorScript = readText("scripts/local/doctor.sh")
+  const installScript = readText("scripts/local/install-local.sh")
   const teamLauncher = readText("scripts/workflow/launch-omgb-team.sh")
   const fanoutLauncher = readText("scripts/workflow/launch-omgb-fanout.sh")
 
@@ -1048,8 +1049,15 @@ function assertRuntimeReportingContracts() {
   if (!readText("package.json").includes("scripts/ci/test-launcher-modes.sh")) {
     fail("npm test must include behavioral launcher mode checks for explicit --dry-run and mixed launch flags")
   }
-  if (!readText("package.json").includes("scripts/ci/test-real-omgb-evidence.sh") || !existsSync(path.join(root, "scripts", "ci", "test-real-omgb-evidence.sh"))) {
+  const packageJsonText = readText("package.json")
+  if (!packageJsonText.includes("scripts/ci/test-real-omgb-evidence.sh") || !existsSync(path.join(root, "scripts", "ci", "test-real-omgb-evidence.sh"))) {
     fail("npm test must include a negative transcript-evidence regression test for the real /omgb gate")
+  }
+  if (!packageJsonText.includes("e2e:real-omgb") || !packageJsonText.includes("OMGB_E2E_REAL_OMGB=1")) {
+    fail("package.json must expose npm run e2e:real-omgb for discoverable real /omgb verification")
+  }
+  if (!doctorScript.includes("OMGB_E2E_REAL_OMGB=1") || !installScript.includes("OMGB_E2E_REAL_OMGB=1") || !readText("scripts/local/verify-robust-install.sh").includes("proves /omgb slash-skill execution")) {
+    fail("installer, doctor, and robust-install guidance must point users at the real /omgb quota probe")
   }
   if (!e2eScript.includes('local plugin payload may not appear as an enabled plugin')) {
     fail("scripts/local/e2e.sh must clarify user-skill mount vs enabled-plugin listing semantics")

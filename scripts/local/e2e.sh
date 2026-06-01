@@ -12,7 +12,11 @@
 #   3. `grok inspect` exits cleanly (with code 0 or the documented diagnostic code).
 #   4. The plugin payload at the local install path contains a discoverable
 #      omgb skill.
-#   5. Headless reachability probe with `grok -p` must pass for a full E2E.
+#   5. Headless reachability probe with `grok -p` must pass when
+#      OMGB_E2E_HEADLESS=1. This proves Grok reachability, not /omgb completion.
+#   6. Optional OMGB_E2E_REAL_OMGB=1 runs a real `/omgb` slash-skill probe in
+#      an isolated HOME + temp workspace, with read-only tools and transcript
+#      evidence that the omgb skill envelope loaded.
 #      Set OMGB_E2E_ALLOW_HEADLESS_SKIP=1 only for an explicit structural check;
 #      that mode never prints the full E2E pass marker.
 #

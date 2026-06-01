@@ -214,7 +214,9 @@ if [[ $MOUNT_POINTS_TO_CURRENT -eq 1 && -f "$USER_SKILL/agents/ROLE-INDEX.md" ]]
   echo "  node scripts/ci/validate.mjs --smoke"
   echo "  npm test"
   echo "  OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh"
-  echo "  OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh   # full live probe"
+  echo "  OMGB_E2E_HEADLESS=1 scripts/local/e2e.sh   # live Grok reachability probe"
+  echo "  OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 scripts/local/e2e.sh   # opt-in real /omgb quota probe"
+  echo "  npm run e2e:real-omgb   # same real /omgb probe via npm"
   echo "  scripts/workflow/export-omgb-handoff.sh <your-task-slug>   # share run with Claude/Codex/Cursor"
   echo "  cat docs/WORKING-WITH-OTHER-AGENTS.md           # hybrid team guide"
 else
