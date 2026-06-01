@@ -674,6 +674,7 @@ function runSanity() {
   assertScenarioCoverageBlocks()
   assertScenarioCoveragePasses()
   assertHeadlessGateRejectsNonZeroExit()
+  assertRuntimeReportingContracts()
   assertValidateRejectsUnknownFlag()
 
   if (process.exitCode) {
@@ -982,6 +983,51 @@ function assertScenarioCoveragePasses() {
     }
   } finally {
     rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// Runtime reporting guard: keep the operational evidence honest. These checks
+// lock in the fixes for three observed drift points: e2e must audit the durable
+// run archive rather than only temp probes, probe cleanup must remove temp
+// repo-local symlinks, and team dry-run copy/paste commands must match the real
+// launch permission mode.
+function assertRuntimeReportingContracts() {
+  const e2eScript = readText("scripts/local/e2e.sh")
+  const doctorScript = readText("scripts/local/doctor.sh")
+  const teamLauncher = readText("scripts/workflow/launch-omgb-team.sh")
+
+  if (!e2eScript.includes('audit_canonical_runs()')) {
+    fail("scripts/local/e2e.sh must keep canonical run archive audit in a named helper")
+  }
+  if (!e2eScript.includes('OMGB_RUNS_ROOT="$HOME/.grok/omgb/runs" node "$ROOT/scripts/ci/validate.mjs" --audit-all')) {
+    fail("scripts/local/e2e.sh must audit ~/.grok/omgb/runs explicitly, not only temporary probe roots")
+  }
+  if (e2eScript.includes('ok "all completed runs pass the subagent-evidence audit"')) {
+    fail("scripts/local/e2e.sh must not claim all completed runs pass after auditing only temp dry-run probes")
+  }
+  if (!e2eScript.includes('rm -f -- "$link"') || !e2eScript.includes('readlink "$link"')) {
+    fail("scripts/local/e2e.sh must clean repo-local symlinks that point at temporary probe roots")
+  }
+  if (!e2eScript.includes('! -e "$target"') || !e2eScript.includes('PROBE_TMP_PARENT')) {
+    fail("scripts/local/e2e.sh must preserve live temp probe links from other concurrent runs while cleaning stale ones")
+  }
+  if (!e2eScript.includes('OMGB_E2E_STRICT_AUDIT')) {
+    fail("scripts/local/e2e.sh must support strict canonical audit gating for releases")
+  }
+  if (e2eScript.includes('^\\s+└\\s+omgb\\s+user\\s*$')) {
+    fail("scripts/local/e2e.sh must not depend on exact grok inspect tree-glyph formatting")
+  }
+  if (!doctorScript.includes('readlink "$link"') || !doctorScript.includes('rm -f -- "$link"')) {
+    fail("scripts/local/doctor.sh must clean repo-local symlinks created by its dry-run probe")
+  }
+  if (!doctorScript.includes('! -e "$target"') || !doctorScript.includes('PROBE_TMP_PARENT')) {
+    fail("scripts/local/doctor.sh must preserve live temp probe links from other concurrent runs while cleaning stale ones")
+  }
+  if (!teamLauncher.includes('--permission-mode auto -p "/omgb $TASK"')) {
+    fail("launch-omgb-team.sh dry-run command must include --permission-mode auto to match the real launch command")
+  }
+  if (!e2eScript.includes('local plugin payload may not appear as an enabled plugin')) {
+    fail("scripts/local/e2e.sh must clarify user-skill mount vs enabled-plugin listing semantics")
   }
 }
 

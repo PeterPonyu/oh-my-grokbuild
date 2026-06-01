@@ -29,8 +29,33 @@ payload_entry_is_safe() {
   esac
 }
 
-PROBE_RUNS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/omgb-doctor-runs.XXXXXX")"
-cleanup_probe_runs() { rm -rf "$PROBE_RUNS_ROOT"; }
+PROBE_TMP_PARENT="$(cd "${TMPDIR:-/tmp}" && pwd)"
+PROBE_RUNS_ROOT="$(mktemp -d "$PROBE_TMP_PARENT/omgb-doctor-runs.XXXXXX")"
+cleanup_probe_runs() {
+  # The launcher dry-run creates a repo-local link to this temp probe root.
+  # Remove that link before deleting the temp tree so doctor does not leave
+  # broken .grok/omgb/runs/doctor-probe symlinks behind.
+  local links_root="$ROOT/.grok/omgb/runs"
+  if [[ -d "$links_root" ]]; then
+    while IFS= read -r link; do
+      local target
+      target="$(readlink "$link" 2>/dev/null || true)"
+      case "$target" in
+        "$PROBE_RUNS_ROOT"/*)
+          rm -f -- "$link"
+          ;;
+        /tmp/omgb-e2e-runs.*/*|/tmp/omgb-doctor-runs.*/*|/tmp/omgb-structural.*/*|"$PROBE_TMP_PARENT"/omgb-e2e-runs.*/*|"$PROBE_TMP_PARENT"/omgb-doctor-runs.*/*|"$PROBE_TMP_PARENT"/omgb-structural.*/*)
+          # Clean stale probe links from prior runs, but do not remove another
+          # currently-running probe's live link.
+          if [[ ! -e "$target" ]]; then
+            rm -f -- "$link"
+          fi
+          ;;
+      esac
+    done < <(find "$links_root" -maxdepth 1 -type l -print 2>/dev/null)
+  fi
+  rm -rf "$PROBE_RUNS_ROOT"
+}
 trap cleanup_probe_runs EXIT
 export OMGB_RUNS_ROOT="$PROBE_RUNS_ROOT"
 
@@ -156,6 +181,7 @@ if [[ -d "$LOCAL_PAYLOAD" ]]; then
 
   if [[ $PAYLOAD_OK -eq 1 ]]; then
     pass "Local plugin payload present and matches local-payload.txt"
+    info "  Runtime note: current Grok discovery uses the user-skill mount for /omgb; this local payload is the portable plugin bundle and may not be listed as an enabled plugin by 'grok inspect'."
   else
     warn "Local plugin payload exists but is stale. Re-run install-local.sh --force"
   fi

@@ -150,7 +150,7 @@ cat <<NEXT
 
 Run this to start the team (passing JSON inline because Grok 0.1.x rejects @<file>):
 
-  grok -s omgb-$SHORT_SLUG --cwd "$ROOT" -p "/omgb $TASK" --agents "\$(cat $CONFIG)"
+  grok -s omgb-$SHORT_SLUG --cwd "$ROOT" --permission-mode auto -p "/omgb $TASK" --agents "\$(cat $CONFIG)"
 
 Or rerun this script with --launch.
 

@@ -29,8 +29,37 @@ LOCAL_INSTALL="${OMGB_LOCAL_INSTALL:-$HOME/.grok/plugins/local/oh-my-grokbuild}"
 AUTH_FILE="$HOME/.grok/auth.json"
 
 mkdir -p "$EVIDENCE_DIR"
-PROBE_RUNS_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/omgb-e2e-runs.XXXXXX")"
-cleanup_probe_runs() { rm -rf "$PROBE_RUNS_ROOT"; }
+PROBE_TMP_PARENT="$(cd "${TMPDIR:-/tmp}" && pwd)"
+PROBE_RUNS_ROOT="$(mktemp -d "$PROBE_TMP_PARENT/omgb-e2e-runs.XXXXXX")"
+STRUCT_TMP=""
+cleanup_probe_runs() {
+  # launch-omgb-{team,fanout}.sh creates repo-local .grok/omgb/runs/<slug>
+  # symlinks to OMGB_RUNS_ROOT. Probe roots are temporary, so remove only the
+  # links this e2e invocation created before deleting the temp directory.
+  local links_root="$ROOT/.grok/omgb/runs"
+  if [[ -d "$links_root" ]]; then
+    while IFS= read -r link; do
+      local target
+      target="$(readlink "$link" 2>/dev/null || true)"
+      case "$target" in
+        "$PROBE_RUNS_ROOT"/*|"${STRUCT_TMP:-__omgb_no_struct_tmp__}"/*)
+          rm -f -- "$link"
+          ;;
+        /tmp/omgb-e2e-runs.*/*|/tmp/omgb-doctor-runs.*/*|/tmp/omgb-structural.*/*|"$PROBE_TMP_PARENT"/omgb-e2e-runs.*/*|"$PROBE_TMP_PARENT"/omgb-doctor-runs.*/*|"$PROBE_TMP_PARENT"/omgb-structural.*/*)
+          # Clean stale probe links from prior runs, but do not remove another
+          # currently-running probe's live link.
+          if [[ ! -e "$target" ]]; then
+            rm -f -- "$link"
+          fi
+          ;;
+      esac
+    done < <(find "$links_root" -maxdepth 1 -type l -print 2>/dev/null)
+  fi
+  rm -rf "$PROBE_RUNS_ROOT"
+  if [[ -n "${STRUCT_TMP:-}" ]]; then
+    rm -rf "$STRUCT_TMP"
+  fi
+}
 trap cleanup_probe_runs EXIT
 export OMGB_RUNS_ROOT="$PROBE_RUNS_ROOT"
 
@@ -83,6 +112,25 @@ run_headless_probe() {
   ok "headless probe returned OMGB_E2E_OK (exit $HEADLESS_RC)"
 }
 
+
+audit_canonical_runs() {
+  step "canonical run archive audit (informational)"
+  # The launch probes above use a temporary OMGB_RUNS_ROOT by design. Audit the
+  # durable ~/.grok/omgb/runs archive explicitly so the e2e log does not imply
+  # that skipped temporary dry-run probes prove historical runs are healthy.
+  set +e
+  OMGB_RUNS_ROOT="$HOME/.grok/omgb/runs" node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
+  AUDIT_RC=$?
+  set -e
+  if [[ $AUDIT_RC -eq 0 ]]; then
+    ok "canonical completed runs pass the subagent-evidence audit; skipped incomplete probe dirs, if any, are listed in the log"
+  elif [[ "${OMGB_E2E_STRICT_AUDIT:-0}" = "1" ]]; then
+    fail "canonical run archive has audit findings; see $LOG"
+  else
+    log "INFO: canonical run archive has audit findings; see $LOG (e2e continues because this pass is informational; set OMGB_E2E_STRICT_AUDIT=1 for release gating)"
+  fi
+}
+
 resolve_grok() {
   if command -v grok >/dev/null 2>&1; then
     command -v grok
@@ -99,7 +147,6 @@ resolve_grok() {
 run_structural_probe() {
   step "structural mode setup (no credentials)"
   STRUCT_TMP="$(mktemp -d "${TMPDIR:-/tmp}/omgb-structural.XXXXXX")"
-  trap 'rm -rf "$PROBE_RUNS_ROOT" "$STRUCT_TMP"' EXIT
 
   FAKE_BIN_DIR="$STRUCT_TMP/bin"
   mkdir -p "$FAKE_BIN_DIR"
@@ -174,16 +221,7 @@ FAKEGROK
   fi
   ok "APR fan-out plans the 5-role adversarial cohort"
 
-  step "state/evidence audit (informational)"
-  set +e
-  node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
-  AUDIT_RC=$?
-  set -e
-  if [[ $AUDIT_RC -eq 0 ]]; then
-    ok "all completed runs pass the subagent-evidence audit"
-  else
-    log "INFO: existing runs do not yet have subagent-spawn evidence (legacy synthesis); see audit findings in $LOG"
-  fi
+  audit_canonical_runs
 
   step "fake headless reachability"
   run_headless_probe
@@ -275,16 +313,7 @@ main() {
   fi
   ok "APR fan-out plans the 5-role adversarial cohort"
 
-  step "audit existing runs (informational)"
-  set +e
-  node "$ROOT/scripts/ci/validate.mjs" --audit-all >>"$LOG" 2>&1
-  AUDIT_RC=$?
-  set -e
-  if [[ $AUDIT_RC -eq 0 ]]; then
-    ok "all completed runs pass the subagent-evidence audit"
-  else
-    log "INFO: existing runs do not yet have subagent-spawn evidence (legacy synthesis); see audit findings in $LOG"
-  fi
+  audit_canonical_runs
 
   step "grok user-skill mount"
   USER_SKILL="$HOME/.grok/skills/omgb"
@@ -317,13 +346,17 @@ main() {
 
     step "grok inspect discovers omgb"
     set +e
-    "$GROK_BIN" inspect 2>&1 | grep -E "^\s+└\s+omgb\s+user\s*$" >>"$LOG"
-    GREP_RC=$?
+    INSPECT_OUTPUT="$($GROK_BIN inspect 2>&1)"
+    GREP_RC=1
+    if printf "%s\n" "$INSPECT_OUTPUT" | grep -Eq '(^|[^[:alnum:]_-])omgb[[:space:]]+user([^[:alnum:]_-]|$)'; then
+      GREP_RC=0
+    fi
+    printf "%s\n" "$INSPECT_OUTPUT" >>"$LOG"
     set -e
     if [[ $GREP_RC -ne 0 ]]; then
       fail "grok inspect did not list omgb as a user skill; reload Grok or rerun install"
     fi
-    ok "grok inspect lists omgb as a user skill"
+    ok "grok inspect lists omgb as a user skill (/omgb is mounted via ~/.grok/skills/omgb; the local plugin payload may not appear as an enabled plugin in this Grok version)"
   fi
 
   step "headless reachability"
