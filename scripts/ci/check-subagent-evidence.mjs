@@ -14,7 +14,18 @@
 // Exits 0 with `[OMGB] audit passed` when:
 //   - Every activeRole in state.json has at least one Subagent block, and
 //   - Every reviewer verdict in review.md has a matching Subagent block, and
-//   - Any spawn_method:unavailable block is paired with a synthesis opt-in.
+//   - Any spawn_method:unavailable block is paired with a synthesis opt-in, and
+//   - Every task in tasks.json declares a `scenarios` array with >=3 entries
+//     covering at least one each of `happy`, `edge`, and `regression`
+//     (the Scenario Contract in SKILL.md). Missing classes or too few
+//     scenarios are high-severity findings that block the audit.
+//
+// Advisory (does not change exit code):
+//   - mission.md's `## Ambiguity` section is parsed into ambiguityScore
+//     (low|medium|high). When high and the blocking question is unresolved,
+//     the report prints an ADVISORY line.
+//   - An optional append-only `.grok/omgb/runs/<slug>/events.jsonl` durable
+//     ledger is accepted as a complementary consistency source when present.
 //
 // Env vars:
 //   OMGB_SUBAGENT_STALL_MS — per-subagent stall threshold (default 600000
@@ -144,6 +155,10 @@ const REVIEWER_ROLES = new Set([
   "ux-reviewer",
   "verifier",
 ])
+
+// Scenario Contract (SKILL.md): every task in tasks.json must declare >=3
+// scenarios covering at least one each of these classes.
+const REQUIRED_SCENARIO_CLASSES = ["happy", "edge", "regression"]
 
 function readText(p) {
   return readFileSync(p, "utf8")
@@ -318,6 +333,67 @@ function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsB
   return findings
 }
 
+// GROK-1: enforce the Scenario Contract. For each task in tasks.json validate
+// that `scenarios` is an array with >=3 entries covering at least one each of
+// happy / edge / regression. Any violation is a high-severity finding so the
+// audit blocks. Returns an array of finding objects.
+function checkScenarioCoverage(tasks) {
+  const findings = []
+  const list = Array.isArray(tasks?.tasks) ? tasks.tasks : []
+  for (const task of list) {
+    const id = task?.id || task?.title || "<unnamed-task>"
+    const scenarios = Array.isArray(task?.scenarios) ? task.scenarios : null
+    if (!scenarios) {
+      findings.push({
+        severity: "high",
+        role: "planner",
+        message: `task '${id}' is missing a 'scenarios' array (Scenario Contract requires >=3 scenarios covering happy/edge/regression)`,
+      })
+      continue
+    }
+    if (scenarios.length < 3) {
+      findings.push({
+        severity: "high",
+        role: "planner",
+        message: `task '${id}' declares only ${scenarios.length} scenario(s); the Scenario Contract requires >=3 (one each of happy, edge, regression)`,
+      })
+    }
+    const presentClasses = new Set(
+      scenarios.map((s) => String(s?.class || "").toLowerCase()),
+    )
+    const missing = REQUIRED_SCENARIO_CLASSES.filter((c) => !presentClasses.has(c))
+    if (missing.length > 0) {
+      findings.push({
+        severity: "high",
+        role: "planner",
+        message: `task '${id}' scenario coverage is missing class(es): ${missing.join(", ")} (every task needs at least one happy, one edge, and one regression scenario)`,
+      })
+    }
+  }
+  return findings
+}
+
+// GROK-3: parse mission.md's `## Ambiguity` section into a normalized score.
+// Returns { score: "low"|"medium"|"high"|null, unresolved: boolean }. The score
+// is advisory only; a high+unresolved score emits an ADVISORY line but never
+// changes the exit code.
+function parseAmbiguityScore(missionText) {
+  if (!missionText) return { score: null, unresolved: false }
+  const section = missionText.match(/^##\s+Ambiguity\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m)
+  const scope = section ? section[1] : missionText
+  const scoreMatch = scope.match(/^\s*score:\s*(low|medium|high)\s*$/im)
+  const score = scoreMatch ? scoreMatch[1].toLowerCase() : null
+  // A blocking question with substantive text after the header means the
+  // ambiguity is still unresolved (no recorded resolution/answer).
+  const questionMatch = missionText.match(
+    /^##\s+Blocking Question[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m,
+  )
+  const questionBody = questionMatch ? questionMatch[1].trim() : ""
+  const resolvedMarker = /(?:^|\n)\s*(?:resolved|answer|resolution):/i.test(questionBody)
+  const unresolved = questionBody.length > 0 && !resolvedMarker
+  return { score, unresolved }
+}
+
 function auditRun(slug, { explicit = false } = {}) {
   const runDir = path.join(runsRoot, slug)
   if (!existsSync(runDir) || !statSync(runDir).isDirectory()) {
@@ -340,6 +416,8 @@ function auditRun(slug, { explicit = false } = {}) {
   const evidencePath = path.join(runDir, "evidence.md")
   const reviewPath = path.join(runDir, "review.md")
   const missionPath = path.join(runDir, "mission.md")
+  const tasksPath = path.join(runDir, "tasks.json")
+  const ledgerPath = path.join(runDir, "events.jsonl")
 
   if (!existsSync(statePath)) {
     if (explicit) {
@@ -361,6 +439,7 @@ function auditRun(slug, { explicit = false } = {}) {
   const evidence = existsSync(evidencePath) ? readText(evidencePath) : ""
   const review = existsSync(reviewPath) ? readText(reviewPath) : ""
   const mission = existsSync(missionPath) ? readText(missionPath) : ""
+  const tasks = existsSync(tasksPath) ? readJsonSafe(tasksPath) : null
 
   const activeRoles = Array.isArray(state.activeRoles) ? state.activeRoles : []
   const synthesisOptIn = /OMGB_ALLOW_SYNTHESIS:\s*true/i.test(mission)
@@ -429,6 +508,13 @@ function auditRun(slug, { explicit = false } = {}) {
 
   const findings = []
   findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts, fanoutStartsByRole))
+
+  // GROK-1: Scenario Contract enforcement. Only runs that have a tasks.json
+  // with at least one task are held to the contract; legacy/plan-only runs
+  // without tasks are not penalized for a contract they predate.
+  if (tasks && Array.isArray(tasks.tasks) && tasks.tasks.length > 0) {
+    findings.push(...checkScenarioCoverage(tasks))
+  }
 
   // Sanity-check phases array when the run is complete.
   if (state.phase === "complete") {
@@ -548,6 +634,37 @@ function auditRun(slug, { explicit = false } = {}) {
     }
   }
 
+  // GROK-3: parse and record the ambiguity score from mission.md. Advisory
+  // only — a high+unresolved score never changes the exit code.
+  const ambiguity = parseAmbiguityScore(mission)
+  const advisories = []
+  if (ambiguity.score === "high" && ambiguity.unresolved) {
+    advisories.push(
+      "mission.md ambiguityScore=high with an unresolved blocking question — resolve before relying on this run's plan",
+    )
+  }
+
+  // GROK-4: optional append-only durable ledger. Presence is informational;
+  // a malformed line is surfaced as an advisory, never a hard fail.
+  let ledger = { present: false, events: 0, malformed: 0 }
+  if (existsSync(ledgerPath)) {
+    ledger.present = true
+    for (const line of readText(ledgerPath).split(/\r?\n/)) {
+      if (!line.trim()) continue
+      try {
+        JSON.parse(line)
+        ledger.events += 1
+      } catch {
+        ledger.malformed += 1
+      }
+    }
+    if (ledger.malformed > 0) {
+      advisories.push(
+        `events.jsonl durable ledger has ${ledger.malformed} malformed line(s); the ledger is advisory but should stay valid JSONL`,
+      )
+    }
+  }
+
   const blocking = findings.filter((f) => f.severity === "high")
   const status = blocking.length === 0 ? (synthesisOptIn ? "synthesis-opt-in" : "passed") : "blocked"
 
@@ -558,6 +675,9 @@ function auditRun(slug, { explicit = false } = {}) {
     active_roles: activeRoles,
     spawned_roles: Array.from(blocksByRole.keys()),
     synthesis_opt_in: synthesisOptIn,
+    ambiguity_score: ambiguity.score,
+    ledger,
+    advisories,
     findings,
     stall_warnings: stallWarnings,
   }
@@ -575,6 +695,12 @@ function printReport(report) {
   console.log(`  phase: ${report.state_phase}`)
   console.log(`  active roles:  ${(report.active_roles || []).join(", ") || "(none)"}`)
   console.log(`  spawned roles: ${(report.spawned_roles || []).join(", ") || "(none)"}`)
+  if (report.ambiguity_score) {
+    console.log(`  ambiguityScore: ${report.ambiguity_score}`)
+  }
+  if (report.ledger && report.ledger.present) {
+    console.log(`  durable ledger: events.jsonl present (${report.ledger.events} event(s))`)
+  }
   if (report.findings && report.findings.length > 0) {
     console.log("  findings:")
     for (const f of report.findings) {
@@ -584,6 +710,11 @@ function printReport(report) {
   if (report.stall_warnings && report.stall_warnings.length > 0) {
     for (const msg of report.stall_warnings) {
       console.log(`  WARN: ${msg}`)
+    }
+  }
+  if (report.advisories && report.advisories.length > 0) {
+    for (const msg of report.advisories) {
+      console.log(`  ADVISORY: ${msg}`)
     }
   }
 }

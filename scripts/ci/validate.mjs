@@ -671,6 +671,8 @@ function runSanity() {
   assertAprRolesAreReadOnly()
   assertPlaceholderMarkerBlocks()
   assertMultiPhaseFanoutSerialStartBlocks()
+  assertScenarioCoverageBlocks()
+  assertScenarioCoveragePasses()
   assertHeadlessGateRejectsNonZeroExit()
   assertValidateRejectsUnknownFlag()
 
@@ -846,6 +848,136 @@ function assertMultiPhaseFanoutSerialStartBlocks() {
       fail(
         "multi-cohort serial fanout fixture: expected semantic serial-fanout finding, " +
           `but auditor output was:\n${output}`,
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// Shared helper: write an otherwise-passing run (one executor with real
+// worker markers) so the only audit lever under test is tasks.json scenario
+// coverage. Returns the fixture dir.
+function writeScenarioFixtureBase(fixDir) {
+  mkdirSync(fixDir, { recursive: true })
+  writeFileSync(
+    path.join(fixDir, "state.json"),
+    JSON.stringify({
+      phase: "complete",
+      activeRoles: ["executor"],
+      phases: [{ name: "execution", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+    }),
+  )
+  writeFileSync(
+    path.join(fixDir, "evidence.md"),
+    [
+      "## Subagent: executor",
+      "- spawn_method: launcher-fanout",
+      "- phase: execution",
+      "- cohort: e1",
+      "- started: 2026-01-01T00:00:00Z",
+      "### WORKER START executor",
+      "real output here",
+      "### WORKER END executor",
+    ].join("\n"),
+  )
+  // No '**Reviewer:**' citation: the only audit lever under test is scenario
+  // coverage, so we avoid the reviewer-without-block finding. A Verdict line is
+  // still required because state.phase=complete.
+  writeFileSync(path.join(fixDir, "review.md"), "Verdict: APPROVE\n")
+}
+
+// GROK-1 fixture: a tasks.json whose task omits the `regression` scenario class
+// must be blocked by the auditor (Scenario Contract: >=3 scenarios covering
+// happy + edge + regression). This asserts the missing-class finding is high.
+function assertScenarioCoverageBlocks() {
+  const fixSlug = "fixture-scenario-coverage-must-block"
+  const runsRoot = validationRunsRoot
+  const fixDir = path.join(runsRoot, fixSlug)
+  writeScenarioFixtureBase(fixDir)
+  try {
+    // Three scenarios but only happy + edge (no regression) -> must block.
+    writeFileSync(
+      path.join(fixDir, "tasks.json"),
+      JSON.stringify({
+        tasks: [
+          {
+            id: "T-001",
+            ownerRole: "executor",
+            status: "completed",
+            scenarios: [
+              { id: "S1", class: "happy", pass_condition: "exit 0", surface_artifact: "stdout", test_file_and_id: "a.test#1" },
+              { id: "S2", class: "edge", pass_condition: "empty input handled", surface_artifact: "stdout", test_file_and_id: "a.test#2" },
+              { id: "S3", class: "happy", pass_condition: "second happy", surface_artifact: "stdout", test_file_and_id: "a.test#3" },
+            ],
+          },
+        ],
+      }),
+    )
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+
+    if (result.status === 0) {
+      fail(
+        "scenario-coverage audit fixture: expected auditor to exit non-zero (blocked) " +
+          "for a task missing the regression scenario class, but it passed. " +
+          "Missing-class findings must have severity=high to trigger the block.",
+      )
+    }
+    if (!output.includes("missing class") && !output.includes("regression")) {
+      fail(
+        "scenario-coverage audit fixture: expected a missing-class finding naming regression, " +
+          `but auditor output was:\n${output}`,
+      )
+    }
+  } finally {
+    rmSync(fixDir, { recursive: true, force: true })
+  }
+}
+
+// GROK-1 fixture: a tasks.json whose task declares >=3 scenarios covering all
+// three classes must pass the auditor (no scenario-coverage finding). This
+// guards against over-blocking on valid coverage.
+function assertScenarioCoveragePasses() {
+  const fixSlug = "fixture-scenario-coverage-must-pass"
+  const runsRoot = validationRunsRoot
+  const fixDir = path.join(runsRoot, fixSlug)
+  writeScenarioFixtureBase(fixDir)
+  try {
+    writeFileSync(
+      path.join(fixDir, "tasks.json"),
+      JSON.stringify({
+        tasks: [
+          {
+            id: "T-001",
+            ownerRole: "executor",
+            status: "completed",
+            scenarios: [
+              { id: "S1", class: "happy", pass_condition: "exit 0", surface_artifact: "stdout", test_file_and_id: "a.test#1" },
+              { id: "S2", class: "edge", pass_condition: "empty input handled", surface_artifact: "stdout", test_file_and_id: "a.test#2" },
+              { id: "S3", class: "regression", pass_condition: "adjacent surface ok", surface_artifact: "stdout", test_file_and_id: "a.test#3" },
+            ],
+          },
+        ],
+      }),
+    )
+
+    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
+    const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+
+    if (result.status !== 0) {
+      fail(
+        "scenario-coverage pass fixture: expected auditor to exit 0 for a task with full " +
+          `happy/edge/regression coverage, but it blocked. Auditor output:\n${output}`,
       )
     }
   } finally {
