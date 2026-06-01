@@ -987,7 +987,7 @@ function assertScenarioCoveragePasses() {
 }
 
 // Runtime reporting guard: keep the operational evidence honest. These checks
-// lock in the fixes for three observed drift points: e2e must audit the durable
+// lock in the fixes for observed runtime drift points: e2e must audit the durable
 // run archive rather than only temp probes, probe cleanup must remove temp
 // repo-local symlinks, and team dry-run copy/paste commands must match the real
 // launch permission mode.
@@ -995,6 +995,7 @@ function assertRuntimeReportingContracts() {
   const e2eScript = readText("scripts/local/e2e.sh")
   const doctorScript = readText("scripts/local/doctor.sh")
   const teamLauncher = readText("scripts/workflow/launch-omgb-team.sh")
+  const fanoutLauncher = readText("scripts/workflow/launch-omgb-fanout.sh")
 
   if (!e2eScript.includes('audit_canonical_runs()')) {
     fail("scripts/local/e2e.sh must keep canonical run archive audit in a named helper")
@@ -1008,7 +1009,7 @@ function assertRuntimeReportingContracts() {
   if (!e2eScript.includes('rm -f -- "$link"') || !e2eScript.includes('readlink "$link"')) {
     fail("scripts/local/e2e.sh must clean repo-local symlinks that point at temporary probe roots")
   }
-  if (!e2eScript.includes('! -e "$target"') || !e2eScript.includes('PROBE_TMP_PARENT')) {
+  if (!/! -e ['\"]?\$target['\"]?/.test(e2eScript) || !e2eScript.includes('PROBE_TMP_PARENT') || !e2eScript.includes('/tmp/omgb-*/*')) {
     fail("scripts/local/e2e.sh must preserve live temp probe links from other concurrent runs while cleaning stale ones")
   }
   if (!e2eScript.includes('OMGB_E2E_STRICT_AUDIT')) {
@@ -1020,11 +1021,20 @@ function assertRuntimeReportingContracts() {
   if (!doctorScript.includes('readlink "$link"') || !doctorScript.includes('rm -f -- "$link"')) {
     fail("scripts/local/doctor.sh must clean repo-local symlinks created by its dry-run probe")
   }
-  if (!doctorScript.includes('! -e "$target"') || !doctorScript.includes('PROBE_TMP_PARENT')) {
+  if (!/! -e ['\"]?\$target['\"]?/.test(doctorScript) || !doctorScript.includes('PROBE_TMP_PARENT') || !doctorScript.includes('/tmp/omgb-*/*')) {
     fail("scripts/local/doctor.sh must preserve live temp probe links from other concurrent runs while cleaning stale ones")
   }
   if (!teamLauncher.includes('--permission-mode auto -p "/omgb $TASK"')) {
     fail("launch-omgb-team.sh dry-run command must include --permission-mode auto to match the real launch command")
+  }
+  if (!/--dry-run\)\s+LAUNCH=0/.test(teamLauncher) || !/--dry-run\)\s+LAUNCH=0/.test(fanoutLauncher)) {
+    fail("launchers must accept explicit --dry-run as a no-op alias for the default dry-run mode")
+  }
+  if (!teamLauncher.includes('--launch and --dry-run are mutually exclusive') || !fanoutLauncher.includes('--launch and --dry-run are mutually exclusive')) {
+    fail("launchers must reject mixed --launch and --dry-run flags instead of using order-dependent precedence")
+  }
+  if (!readText("package.json").includes("scripts/ci/test-launcher-modes.sh")) {
+    fail("npm test must include behavioral launcher mode checks for explicit --dry-run and mixed launch flags")
   }
   if (!e2eScript.includes('local plugin payload may not appear as an enabled plugin')) {
     fail("scripts/local/e2e.sh must clarify user-skill mount vs enabled-plugin listing semantics")

@@ -4,7 +4,7 @@
 # Launch an OMGB run as a real Grok subagent team.
 #
 # Usage:
-#   scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "<csv>"]
+#   scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch|--dry-run] [--roles "<csv>"]
 #
 # Defaults to --dry-run: writes the agents JSON and prints the exact Grok
 # command, but does not invoke Grok. Pass --launch to actually start the
@@ -26,7 +26,7 @@ set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch] [--roles "csv"]
+Usage: scripts/workflow/launch-omgb-team.sh <short-slug> "<task description>" [--launch|--dry-run] [--roles "csv"]
 
 Examples:
   scripts/workflow/launch-omgb-team.sh handoff-fix "Improve resume and subagent support"
@@ -41,15 +41,23 @@ TASK="$2"
 shift 2
 
 LAUNCH=0
+LAUNCH_FLAG_SEEN=0
+DRY_RUN_FLAG_SEEN=0
 ROLES_CSV=""
 while (($#)); do
   case "$1" in
-    --launch)  LAUNCH=1; shift ;;
+    --launch)  LAUNCH=1; LAUNCH_FLAG_SEEN=1; shift ;;
+    --dry-run) LAUNCH=0; DRY_RUN_FLAG_SEEN=1; shift ;;
     --roles)   [[ $# -ge 2 ]] || { echo "--roles requires csv" >&2; exit 1; }; ROLES_CSV="$2"; shift 2 ;;
     -h|--help) "$0"; exit 0 ;;
     *) echo "unrecognized arg: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ $LAUNCH_FLAG_SEEN -eq 1 && $DRY_RUN_FLAG_SEEN -eq 1 ]]; then
+  echo "--launch and --dry-run are mutually exclusive" >&2
+  exit 1
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Grok writes session artifacts under ~/.grok/omgb/runs/<slug>/. The audit

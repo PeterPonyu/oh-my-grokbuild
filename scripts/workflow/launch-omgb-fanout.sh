@@ -27,14 +27,14 @@
 #     [--phase grounding] \
 #     [--roles "codebase-scout,researcher"] \
 #     [--max-turns 20] \
-#     [--launch]
+#     [--launch|--dry-run]
 #
 # Defaults:
 #   --phase   grounding
 #   --roles   inferred from --phase (grounding: codebase-scout,researcher;
 #             review: code-reviewer,security-reviewer,performance-reviewer,ux-reviewer;
 #             planning: planner,architect)
-#   --launch  off (dry-run prints the plan without forking)
+#   --launch  off (dry-run prints the plan without forking); explicit --dry-run is accepted as a no-op alias
 
 set -euo pipefail
 
@@ -45,7 +45,7 @@ iso_now() { node -e 'console.log(new Date().toISOString())'; }
 
 if [[ $# -lt 2 ]]; then
   cat <<'USAGE' >&2
-Usage: scripts/workflow/launch-omgb-fanout.sh <short-slug> "<task description>" [--phase <name>] [--roles "csv"] [--max-turns N] [--launch]
+Usage: scripts/workflow/launch-omgb-fanout.sh <short-slug> "<task description>" [--phase <name>] [--roles "csv"] [--max-turns N] [--launch|--dry-run]
 
 Examples:
   scripts/workflow/launch-omgb-fanout.sh fanout-demo "Audit OMGB plugin layout"
@@ -63,6 +63,8 @@ PHASE="grounding"
 ROLES_CSV=""
 MAX_TURNS=20
 LAUNCH=0
+LAUNCH_FLAG_SEEN=0
+DRY_RUN_FLAG_SEEN=0
 APPEND=0
 
 while (($#)); do
@@ -70,12 +72,18 @@ while (($#)); do
     --phase)      [[ $# -ge 2 ]] || { echo "--phase requires a name" >&2; exit 1; }; PHASE="$2"; shift 2 ;;
     --roles)      [[ $# -ge 2 ]] || { echo "--roles requires csv" >&2; exit 1; }; ROLES_CSV="$2"; shift 2 ;;
     --max-turns)  [[ $# -ge 2 ]] || { echo "--max-turns requires N" >&2; exit 1; }; MAX_TURNS="$2"; shift 2 ;;
-    --launch)     LAUNCH=1; shift ;;
+    --launch)     LAUNCH=1; LAUNCH_FLAG_SEEN=1; shift ;;
+    --dry-run)    LAUNCH=0; DRY_RUN_FLAG_SEEN=1; shift ;;
     --append)     APPEND=1; shift ;;
     -h|--help)    "$0"; exit 0 ;;
     *)            echo "unrecognized arg: $1" >&2; exit 1 ;;
   esac
 done
+
+if [[ $LAUNCH_FLAG_SEEN -eq 1 && $DRY_RUN_FLAG_SEEN -eq 1 ]]; then
+  echo "--launch and --dry-run are mutually exclusive" >&2
+  exit 1
+fi
 
 # Phase -> default roles mapping (when --roles not given).
 if [[ -z "$ROLES_CSV" ]]; then

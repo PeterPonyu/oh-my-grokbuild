@@ -114,3 +114,39 @@ check before trusting a run.
   environment doctor checks only when a host-level issue directly breaks `/omgb`.
 - **Routine:** For noisy live logs, separate `grok inspect`, OMGB pass markers,
   and third-party MCP errors before deciding what failed.
+
+## Finding: explicit `--dry-run` was rejected by launchers
+
+- **What:** A real-user pass tried the intuitive explicit `--dry-run` flag after
+  reading that launchers default to dry-run mode. Both team and fan-out launchers
+  rejected the flag as unknown.
+- **Why it matters:** Users often make default behavior explicit in scripts. A
+  documented dry-run posture should accept an explicit no-op flag instead of
+  failing before producing evidence.
+- **How fixed:** `launch-omgb-team.sh` and `launch-omgb-fanout.sh` now accept
+  `--dry-run` as a no-op alias for the default non-launching mode, while
+  preserving `--launch` as the only live execution switch. Mixed `--launch` +
+  `--dry-run` invocations are rejected instead of using order-dependent precedence.
+- **Evidence:** Real-user launcher probes with `--dry-run` now produce the team
+  `agents-config.json` and fan-out dry-run plan without invoking Grok.
+- **Future design:** Keep launch flags monotonic: default and `--dry-run` never
+  execute model work; only `--launch` starts Grok, and mixed launch-mode flags
+  fail closed.
+- **Routine:** Include explicit `--dry-run` in user-facing launcher smoke tests.
+
+## Finding: deleted temporary custom run roots left broken repo-local links
+
+- **What:** A real-user dry-run with `OMGB_RUNS_ROOT=/tmp/omgb-user-test-runs`
+  produced repo-local `.grok/omgb/runs/<slug>` symlinks. After the temp root was
+  deleted, doctor/e2e did not remove those broken links because cleanup matched
+  only built-in probe temp prefixes.
+- **Why it matters:** Broken run links make later audits and directory browsing
+  look stale or corrupted, even when the real canonical archive is healthy.
+- **How fixed:** Doctor/e2e stale-link cleanup now removes broken symlinks under
+  `/tmp/omgb-*/*` while still preserving live links whose targets exist.
+- **Evidence:** The real-user stale-link check now expects no broken repo-local
+  symlinks after doctor/e2e cleanup.
+- **Future design:** Treat any `/tmp/omgb-*` run root as ephemeral unless the
+  target still exists; never remove durable non-temp archive links automatically.
+- **Routine:** Test with a custom temp `OMGB_RUNS_ROOT`, delete it, then run
+  doctor/e2e and assert no broken repo-local symlinks remain.

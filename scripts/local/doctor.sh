@@ -44,7 +44,7 @@ cleanup_probe_runs() {
         "$PROBE_RUNS_ROOT"/*)
           rm -f -- "$link"
           ;;
-        /tmp/omgb-e2e-runs.*/*|/tmp/omgb-doctor-runs.*/*|/tmp/omgb-structural.*/*|"$PROBE_TMP_PARENT"/omgb-e2e-runs.*/*|"$PROBE_TMP_PARENT"/omgb-doctor-runs.*/*|"$PROBE_TMP_PARENT"/omgb-structural.*/*)
+        /tmp/omgb-*/*|"$PROBE_TMP_PARENT"/omgb-*/*)
           # Clean stale probe links from prior runs, but do not remove another
           # currently-running probe's live link.
           if [[ ! -e "$target" ]]; then
