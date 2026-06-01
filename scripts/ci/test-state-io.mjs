@@ -133,20 +133,24 @@ test("append-cohort: pushes new cohort without clobbering prior ones", () => {
     }
 
     const tmp1 = makeTmp(["codebase-scout", "researcher"], "2026-01-01T00:00:00.000Z", "2026-01-01T00:01:00.000Z")
-    stateIoRun(["append-cohort", s, "grounding", "g1", "2026-01-01T00:00:00.000Z", "2026-01-01T00:01:00.000Z", tmp1])
+    stateIoRun(["append-cohort", s, "grounding", "g1", "2026-01-01T00:00:00.000Z", "2026-01-01T00:01:00.000Z", tmp1, "run-grounding-g1"])
     rmSync(tmp1, { recursive: true, force: true })
 
     const tmp2 = makeTmp(["planner", "architect"], "2026-01-01T00:02:00.000Z", "2026-01-01T00:03:00.000Z")
-    stateIoRun(["append-cohort", s, "planning", "p1", "2026-01-01T00:02:00.000Z", "2026-01-01T00:03:00.000Z", tmp2])
+    stateIoRun(["append-cohort", s, "planning", "p1", "2026-01-01T00:02:00.000Z", "2026-01-01T00:03:00.000Z", tmp2, "run-planning-p1"])
     rmSync(tmp2, { recursive: true, force: true })
 
     const trace = readJson(path.join(dir, "fanout-trace.json"))
     assert.equal(trace.cohorts.length, 2, "both cohorts must be present after two appends")
     assert.equal(trace.cohorts[0].cohort, "g1")
+    assert.equal(trace.cohorts[0].run_id, "run-grounding-g1")
+    assert.equal(trace.cohorts[0].roles[0].run_id, "run-grounding-g1")
     assert.equal(trace.cohorts[1].cohort, "p1")
+    assert.equal(trace.cohorts[1].run_id, "run-planning-p1")
 
     const state = readJson(path.join(dir, "state.json"))
     assert.equal(state.phases.length, 2, "state.json must record both phases")
+    assert.equal(state.phases[0].run_id, "run-grounding-g1")
   } finally {
     cleanup(s)
   }
@@ -225,6 +229,8 @@ test("append-cohort: wraps legacy single-cohort trace (backward-compat)", () => 
     const trace = readJson(path.join(dir, "fanout-trace.json"))
     assert.equal(trace.cohorts.length, 2, "legacy cohort + new cohort = 2 entries")
     assert.equal(trace.cohorts[0].cohort, "g1", "legacy cohort must be cohorts[0]")
+    assert.equal(trace.cohorts[0].run_id, `legacy:${s}:grounding:g1`, "wrapped legacy cohort must get a stable legacy run_id")
+    assert.equal(trace.cohorts[0].roles[0].run_id, `legacy:${s}:grounding:g1`, "wrapped legacy role must get the same stable legacy run_id")
     assert.equal(trace.cohorts[1].cohort, "g2", "new cohort must be cohorts[1]")
   } finally {
     cleanup(s)

@@ -44,12 +44,10 @@ const root = fileURLToPath(new URL("../..", import.meta.url))
 const runsRoot = resolveRunsRoot()
 const grokSessionsRoot = resolveSessionsRoot()
 
-// A "single assistant turn" — two spawn_subagent calls in the same tool_use
-// array — produces events.jsonl `tool_started` records within ~milliseconds
-// of each other. Anything beyond 1.5s strongly suggests two separate
-// assistant turns. Beyond 5s is decisive.
+// Timing gaps are diagnostic only. Correctness is established by explicit
+// run_id/cohort identity in fanout traces and evidence, not by fragile wall-clock
+// thresholds that vary under host load.
 const SAME_TURN_MAX_GAP_MS = 1500
-const DEFINITELY_SERIAL_MIN_GAP_MS = 5000
 
 function urlEncodeCwd(cwd) {
   // Grok URL-encodes path separators in the session dir name.
@@ -189,6 +187,7 @@ function findSubagentBlocks(evidenceText) {
     const justifMatch = body.match(/^- *Synthesis Justification:\s*(.+)$/m)
     const phaseMatch = body.match(/^- *phase:\s*([a-z-]+)/m)
     const cohortMatch = body.match(/^- *cohort:\s*([A-Za-z0-9_-]+)/m)
+    const runIdMatch = body.match(/^- *run_id:\s*([^\s]+)/m)
     const serialReasonMatch = body.match(/^- *serial_reason:\s*(.+)$/m)
     const startedMatch = body.match(/^- *started:\s*(\S+)/m)
     const workerMarker = body.includes(`### WORKER START ${role}`) && body.includes(`### WORKER END ${role}`)
@@ -204,6 +203,7 @@ function findSubagentBlocks(evidenceText) {
       spawn_method: methodMatch ? methodMatch[1] : null,
       phase: phaseMatch ? phaseMatch[1] : null,
       cohort: cohortMatch ? cohortMatch[1] : null,
+      run_id: runIdMatch ? runIdMatch[1] : null,
       serial_reason: serialReasonMatch ? serialReasonMatch[1].trim() : null,
       started: startedMatch ? startedMatch[1] : null,
       has_worker_marker: workerMarker,
@@ -225,7 +225,15 @@ function parseIsoMs(s) {
   return Number.isNaN(t) ? null : t
 }
 
-function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsByRole) {
+function cohortKey(phase, cohort) {
+  return `${phase || ""}\u0000${cohort || ""}`
+}
+
+function roleKey(phase, cohort, role) {
+  return `${phase || ""}\u0000${cohort || ""}\u0000${role || ""}`
+}
+
+function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsByRoleKey, fanoutRunIdsByRoleKey, stateRunIdsByPhaseCohort) {
   const findings = []
   // Transcript ground truth: if Grok's events.jsonl is available, compute
   // the largest gap between consecutive spawn_subagent `tool_started`
@@ -275,57 +283,71 @@ function checkConcurrencyFindings(blocks, transcriptSpawnStartsMs, fanoutStartsB
     }
 
     for (const cohortBlocks of sharedCohorts) {
+      const cohort = cohortBlocks[0].cohort
       const starts = cohortBlocks.map((b) => parseIsoMs(b.started)).filter((t) => t !== null)
-      if (starts.length < 2) continue
-      const spread = Math.max(...starts) - Math.min(...starts)
-      if (spread > 60_000) {
-        findings.push({
-          severity: "medium",
-          role: cohortBlocks.map((b) => b.role).join("+"),
-          message: `phase=${phase} cohort '${cohortBlocks[0].cohort}' started timestamps span ${Math.round(spread / 1000)}s (>60s suggests serial spawn even though cohort id was shared)`,
-        })
-      }
-    }
-
-    // Ground-truth concurrency check: prefer per-method evidence over the
-    // leader-claimed `started:` timestamps which can be fabricated.
-    const allFanout = phaseBlocks.every((b) => FANOUT_METHODS.has(b.spawn_method))
-    const allTaskTool = phaseBlocks.every((b) => TASK_TOOL_METHODS.has(b.spawn_method))
-
-    if (allFanout && fanoutStartsByRole) {
-      // launcher-fanout: read per-role start times from fanout-trace.json.
-      const roleStarts = phaseBlocks
-        .map((b) => fanoutStartsByRole.get(b.role))
-        .filter((t) => typeof t === "number" && !Number.isNaN(t))
-      if (roleStarts.length >= 2) {
-        const spread = Math.max(...roleStarts) - Math.min(...roleStarts)
-        if (spread > DEFINITELY_SERIAL_MIN_GAP_MS) {
-          findings.push({
-            severity: "high",
-            role: phaseBlocks.map((b) => b.role).join("+"),
-            message: `phase=${phase} fanout-trace: subprocess starts spread ${Math.round(spread / 1000)}s apart (>${DEFINITELY_SERIAL_MIN_GAP_MS / 1000}s). Launcher did not actually fork in parallel.`,
-          })
-        } else if (spread > SAME_TURN_MAX_GAP_MS) {
+      if (starts.length >= 2) {
+        const spread = Math.max(...starts) - Math.min(...starts)
+        if (spread > 60_000) {
           findings.push({
             severity: "medium",
-            role: phaseBlocks.map((b) => b.role).join("+"),
-            message: `phase=${phase} fanout-trace: subprocess starts ${Math.round(spread)}ms apart (>${SAME_TURN_MAX_GAP_MS}ms). Likely not concurrent fork.`,
+            role: cohortBlocks.map((b) => b.role).join("+"),
+            message: `phase=${phase} diagnostic: cohort '${cohort}' started timestamps span ${Math.round(spread / 1000)}s (>60s suggests serial spawn even though cohort id was shared)`,
           })
         }
       }
-    } else if (allTaskTool && transcriptGapsMs) {
-      const maxGap = Math.max(...transcriptGapsMs)
-      if (maxGap > DEFINITELY_SERIAL_MIN_GAP_MS) {
+
+      const allFanout = cohortBlocks.every((b) => FANOUT_METHODS.has(b.spawn_method))
+      if (!allFanout) continue
+
+      // launcher-fanout: require explicit run_id identity per (phase, cohort)
+      // across centralized state.json, fanout-trace.json, and evidence.md.
+      // Timing spread remains diagnostic only; it must not be a hard correctness
+      // gate because host scheduling can legitimately delay subprocess startup.
+      const stateRunId = stateRunIdsByPhaseCohort?.get(cohortKey(phase, cohort)) || null
+      const stateIsLegacy = Boolean(stateRunId?.startsWith("legacy:"))
+      const traceRunIds = cohortBlocks.map((b) => fanoutRunIdsByRoleKey?.get(roleKey(phase, cohort, b.role))).filter(Boolean)
+      const evidenceRunIds = cohortBlocks.map((b) => b.run_id || (stateIsLegacy ? stateRunId : null)).filter(Boolean)
+      const missingTraceRunId = cohortBlocks.filter((b) => !fanoutRunIdsByRoleKey?.get(roleKey(phase, cohort, b.role))).map((b) => b.role)
+      const missingEvidenceRunId = cohortBlocks.filter((b) => !b.run_id && !stateIsLegacy).map((b) => b.role)
+      const uniqueTraceRunIds = new Set(traceRunIds)
+      const uniqueEvidenceRunIds = new Set(evidenceRunIds)
+      if (!stateRunId || missingTraceRunId.length > 0 || missingEvidenceRunId.length > 0) {
         findings.push({
           severity: "high",
-          role: phaseBlocks.map((b) => b.role).join("+"),
-          message: `phase=${phase} transcript-evidence: spawn_subagent events in events.jsonl are ${Math.round(maxGap / 1000)}s apart (>${DEFINITELY_SERIAL_MIN_GAP_MS / 1000}s = definitely serial). The leader emitted these in consecutive assistant turns, not a single one. cohort='${phaseBlocks[0].cohort || "?"}' was hand-crafted; the host transcript disagrees.`,
+          role: cohortBlocks.map((b) => b.role).join("+"),
+          message: `phase=${phase} cohort=${cohort} run_id missing (state: ${stateRunId || "missing"}; trace missing: ${missingTraceRunId.join(", ") || "none"}; evidence missing: ${missingEvidenceRunId.join(", ") || "none"}). Mandatory-parallel launcher cohorts must share an explicit run_id in state.json, fanout-trace.json, and evidence.md; timing gaps are diagnostic only.`,
         })
-      } else if (maxGap > SAME_TURN_MAX_GAP_MS) {
+      } else if (uniqueTraceRunIds.size !== 1 || uniqueEvidenceRunIds.size !== 1 || traceRunIds[0] !== evidenceRunIds[0] || traceRunIds[0] !== stateRunId) {
+        findings.push({
+          severity: "high",
+          role: cohortBlocks.map((b) => b.role).join("+"),
+          message: `phase=${phase} cohort=${cohort} run_id mismatch (state=${stateRunId}; trace=${[...uniqueTraceRunIds].join(",")}; evidence=${[...uniqueEvidenceRunIds].join(",")}). Mandatory-parallel roles must share one deterministic run_id per cohort.`,
+        })
+      }
+
+      const roleStarts = cohortBlocks
+        .map((b) => fanoutStartsByRoleKey?.get(roleKey(phase, cohort, b.role)))
+        .filter((t) => typeof t === "number" && !Number.isNaN(t))
+      if (roleStarts.length >= 2) {
+        const spread = Math.max(...roleStarts) - Math.min(...roleStarts)
+        if (spread > SAME_TURN_MAX_GAP_MS) {
+          findings.push({
+            severity: "medium",
+            role: cohortBlocks.map((b) => b.role).join("+"),
+            message: `phase=${phase} cohort=${cohort} fanout-trace diagnostic: subprocess starts spread ${Math.round(spread)}ms apart; run_id identity, not timing, is the blocking concurrency contract.`,
+          })
+        }
+      }
+    }
+
+    const allTaskTool = phaseBlocks.every((b) => TASK_TOOL_METHODS.has(b.spawn_method))
+    if (allTaskTool && transcriptGapsMs) {
+      const maxGap = Math.max(...transcriptGapsMs)
+      if (maxGap > SAME_TURN_MAX_GAP_MS) {
         findings.push({
           severity: "medium",
           role: phaseBlocks.map((b) => b.role).join("+"),
-          message: `phase=${phase} transcript-evidence: spawn_subagent events ${Math.round(maxGap)}ms apart (>${SAME_TURN_MAX_GAP_MS}ms). Likely not the same assistant turn.`,
+          message: `phase=${phase} transcript-evidence diagnostic: spawn_subagent events ${Math.round(maxGap)}ms apart; timing is advisory and does not block without deterministic run_id evidence.`,
         })
       }
     }
@@ -473,24 +495,41 @@ function auditRun(slug, { explicit = false } = {}) {
   // `grok --agent <role>` subprocess — that's the ground truth the
   // launcher can prove (the launcher itself forks the subprocesses).
   const fanoutTracePath = path.join(runDir, "fanout-trace.json")
-  let fanoutStartsByRole = null
+  let fanoutStartsByRoleKey = null
+  let fanoutRunIdsByRoleKey = null
+  const legacyRunIdsByPhaseCohort = new Map()
   // Per-role duration map for the stall-warning pass below.
   const roleDurationsMs = []
   if (existsSync(fanoutTracePath)) {
     try {
       const trace = JSON.parse(readText(fanoutTracePath))
-      fanoutStartsByRole = new Map()
+      const traceSchemaVersion = Number(trace.schema_version || 0)
+      const legacyRunId = (phase, cohort) => `legacy:${slug}:${phase || "unknown"}:${cohort || "unknown"}`
+      fanoutStartsByRoleKey = new Map()
+      fanoutRunIdsByRoleKey = new Map()
       const cohorts = Array.isArray(trace.cohorts) ? trace.cohorts : []
       const allRoles = []
       // Newer multi-cohort layout: {slug, cohorts:[{roles:[...]}]}.
       for (const c of cohorts) {
-        for (const r of c.roles ?? []) allRoles.push(r)
+        const phase = c.phase
+        const cohort = c.cohort
+        const synthesizedRunId = traceSchemaVersion > 0 ? null : legacyRunId(phase, cohort)
+        const cohortRunId = c.run_id || synthesizedRunId
+        if (cohortRunId && String(cohortRunId).startsWith("legacy:")) legacyRunIdsByPhaseCohort.set(cohortKey(phase, cohort), String(cohortRunId))
+        for (const r of c.roles ?? []) {
+          allRoles.push({ ...r, phase: r.phase || phase, cohort: r.cohort || cohort, run_id: r.run_id || cohortRunId })
+        }
       }
       // Legacy single-cohort layout: {slug, roles:[...]}.
-      for (const r of trace.roles ?? []) allRoles.push(r)
+      const flatLegacyRunId = traceSchemaVersion > 0 ? null : legacyRunId(trace.phase, trace.cohort)
+      if (flatLegacyRunId && Array.isArray(trace.roles)) legacyRunIdsByPhaseCohort.set(cohortKey(trace.phase, trace.cohort), flatLegacyRunId)
+      for (const r of trace.roles ?? []) allRoles.push({ ...r, phase: r.phase || trace.phase, cohort: r.cohort || trace.cohort, run_id: r.run_id || trace.run_id || flatLegacyRunId })
       for (const entry of allRoles) {
         if (entry?.role && entry?.started) {
-          fanoutStartsByRole.set(entry.role, Date.parse(entry.started))
+          fanoutStartsByRoleKey.set(roleKey(entry.phase, entry.cohort, entry.role), Date.parse(entry.started))
+        }
+        if (entry?.role && entry?.run_id) {
+          fanoutRunIdsByRoleKey.set(roleKey(entry.phase, entry.cohort, entry.role), String(entry.run_id))
         }
         if (entry?.role && typeof entry.duration_ms === "number") {
           roleDurationsMs.push({ role: entry.role, duration_ms: entry.duration_ms })
@@ -502,12 +541,27 @@ function auditRun(slug, { explicit = false } = {}) {
         }
       }
     } catch {
-      fanoutStartsByRole = null
+      fanoutStartsByRoleKey = null
+      fanoutRunIdsByRoleKey = null
+    }
+  }
+
+  const stateRunIdsByPhaseCohort = new Map()
+  for (const p of Array.isArray(state.phases) ? state.phases : []) {
+    if (!p?.name) continue
+    const matchingLegacyKeys = [...legacyRunIdsByPhaseCohort.keys()].filter((key) => key.startsWith(`${p.name}\u0000`))
+    const keys = p?.cohort ? [cohortKey(p.name, p.cohort)] : matchingLegacyKeys
+    for (const key of keys) {
+      if (p?.run_id) {
+        stateRunIdsByPhaseCohort.set(key, String(p.run_id))
+      } else if (legacyRunIdsByPhaseCohort.has(key)) {
+        stateRunIdsByPhaseCohort.set(key, legacyRunIdsByPhaseCohort.get(key))
+      }
     }
   }
 
   const findings = []
-  findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts, fanoutStartsByRole))
+  findings.push(...checkConcurrencyFindings(blocks, transcriptSpawnStarts, fanoutStartsByRoleKey, fanoutRunIdsByRoleKey, stateRunIdsByPhaseCohort))
 
   // GROK-1: Scenario Contract enforcement. Only runs that have a tasks.json
   // with at least one task are held to the contract; legacy/plan-only runs

@@ -98,10 +98,11 @@ node scripts/ci/validate.mjs --audit-run <slug>
 node scripts/ci/validate.mjs --audit-all
 ```
 
-The audit reads `~/.grok/sessions/<urlencoded-cwd>/<session-uuid>/events.jsonl`
-to verify that the leader's claimed parallel cohorts actually emitted their
-`spawn_subagent` calls in a single assistant turn. Hand-crafted `started:`
-timestamps cannot fool this check.
+The audit verifies completed-run evidence. For launcher-fanout cohorts, the
+hard contract is deterministic identity: the same `run_id` must appear in
+`state.json`, `fanout-trace.json`, and each relevant `evidence.md` subagent
+block. Timing and `~/.grok/sessions/.../events.jsonl` transcript gaps are
+reported as diagnostics, not the blocking contract for launcher-fanout runs.
 
 ## Uninstall
 

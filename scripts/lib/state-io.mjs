@@ -19,7 +19,7 @@
 //       Initialize a run dir. Idempotent on mission.md/tasks.json/review.md;
 //       always overwrites state.json with a fresh active=true scaffold.
 //
-//   state-io.mjs append-cohort <slug> <phase> <cohort> <started-iso> <completed-iso> <trace-tmp-dir>
+//   state-io.mjs append-cohort <slug> <phase> <cohort> <started-iso> <completed-iso> <trace-tmp-dir> [run-id]
 //       Read per-role files (<role>.start, <role>.end, <role>.rc,
 //       <role>.pid) from <trace-tmp-dir>, compose a cohort entry, push it
 //       onto fanout-trace.json.cohorts, push a matching phase entry onto
@@ -124,7 +124,15 @@ function init(slug, task, phase, cohort, rolesCsv) {
   console.log(JSON.stringify({ op: "init", slug, dir, startedAt, roles }))
 }
 
-function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir) {
+function legacyRunId(slug, phase, cohort) {
+  return `legacy:${slug}:${phase || "unknown"}:${cohort || "unknown"}`
+}
+
+function withRunId(entry, runId) {
+  return { ...entry, run_id: entry?.run_id || runId }
+}
+
+function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir, runIdArg = "") {
   const dir = runDir(slug)
   if (!existsSync(dir)) {
     throw new Error(`append-cohort: run dir does not exist: ${dir} (call init first)`)
@@ -136,17 +144,26 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
   // `{slug, phase, cohort, roles: [...]}` at the top level. Wrap it.
   let cohorts = Array.isArray(existing.cohorts) ? existing.cohorts : []
   if (cohorts.length === 0 && Array.isArray(existing.roles)) {
+    const wrappedRunId = existing.run_id || legacyRunId(slug, existing.phase, existing.cohort)
     cohorts = [{
       phase: existing.phase,
       cohort: existing.cohort,
+      run_id: wrappedRunId,
       started: existing.started,
       completed: existing.completed,
       duration_ms: existing.duration_ms,
-      roles: existing.roles,
+      roles: existing.roles.map((r) => withRunId(r, wrappedRunId)),
     }]
+  } else {
+    cohorts = cohorts.map((c) => {
+      const cRunId = c?.run_id || legacyRunId(slug, c?.phase, c?.cohort)
+      return { ...c, run_id: cRunId, roles: (c?.roles ?? []).map((r) => withRunId(r, cRunId)) }
+    })
   }
 
   const cohortDurationMs = durationMs(startedIso, completedIso)
+  const fallbackRunId = `${slug}:${phase}:${cohort}:${startedIso}`
+  const cohortRunId = String(runIdArg || fallbackRunId)
   const roles = []
   for (const entry of readdirSync(traceTmpDir).sort()) {
     if (!entry.endsWith(".start")) continue
@@ -155,9 +172,11 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
     const end = readTrim(path.join(traceTmpDir, `${role}.end`))
     const rc = readTrim(path.join(traceTmpDir, `${role}.rc`), "?")
     const pidStr = readTrim(path.join(traceTmpDir, `${role}.pid`), "0")
+    const runId = readTrim(path.join(traceTmpDir, `${role}.run_id`), cohortRunId)
     roles.push({
       role,
       pid: Number(pidStr) || 0,
+      run_id: runId,
       started: start,
       completed: end,
       duration_ms: durationMs(start, end),
@@ -167,18 +186,29 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
   cohorts.push({
     phase,
     cohort,
+    run_id: cohortRunId,
     started: startedIso,
     completed: completedIso,
     duration_ms: cohortDurationMs,
     roles,
   })
-  writeJson(tracePath, { slug, cohorts })
+  writeJson(tracePath, { slug, schema_version: 2, cohorts })
 
   const statePath = path.join(dir, "state.json")
   const state = readJson(statePath, {})
   state.phases = Array.isArray(state.phases) ? state.phases : []
+  for (const existingPhase of state.phases) {
+    if (!existingPhase?.name || existingPhase.run_id) continue
+    const candidates = cohorts.filter((c) => c?.phase === existingPhase.name && (!existingPhase.cohort || existingPhase.cohort === c.cohort) && c.run_id)
+    if (candidates.length === 1) {
+      existingPhase.cohort = existingPhase.cohort || candidates[0].cohort
+      existingPhase.run_id = candidates[0].run_id
+    }
+  }
   state.phases.push({
     name: phase,
+    cohort,
+    run_id: cohortRunId,
     started: startedIso,
     completed: completedIso,
     duration_ms: cohortDurationMs,
@@ -195,6 +225,7 @@ function appendCohort(slug, phase, cohort, startedIso, completedIso, traceTmpDir
       slug,
       phase,
       cohort,
+      run_id: cohortRunId,
       role_count: roles.length,
       duration_ms: cohortDurationMs,
       trace_cohorts: cohorts.length,
@@ -256,7 +287,7 @@ function finalize(slug, keepActive) {
 function usage(code = 1) {
   console.error("Usage:")
   console.error("  state-io.mjs init <slug> <task> <phase> <cohort> <roles-csv>")
-  console.error("  state-io.mjs append-cohort <slug> <phase> <cohort> <started-iso> <completed-iso> <trace-tmp-dir>")
+  console.error("  state-io.mjs append-cohort <slug> <phase> <cohort> <started-iso> <completed-iso> <trace-tmp-dir> [run-id]")
   console.error("  state-io.mjs finalize <slug> [--keep-active]")
   console.error("  state-io.mjs build-agents-config <slug> <roles-csv> <readonly-roles-csv>")
   process.exit(code)
@@ -273,7 +304,7 @@ try {
       break
     case "append-cohort":
       if (args.length < 7) usage()
-      appendCohort(args[1], args[2], args[3], args[4], args[5], args[6])
+      appendCohort(args[1], args[2], args[3], args[4], args[5], args[6], args[7])
       break
     case "finalize":
       if (args.length < 2) usage()

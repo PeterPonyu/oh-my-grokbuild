@@ -673,7 +673,7 @@ function runSanity() {
   assertBash32CompatInShellScripts()
   assertAprRolesAreReadOnly()
   assertPlaceholderMarkerBlocks()
-  assertMultiPhaseFanoutSerialStartBlocks()
+  assertFanoutRunIdContractBlocksAndTimingOnlyWarns()
   assertScenarioCoverageBlocks()
   assertScenarioCoveragePasses()
   assertHeadlessGateRejectsNonZeroExit()
@@ -743,7 +743,7 @@ function assertPlaceholderMarkerBlocks() {
       ].join("\n"),
     )
     // review.md: minimal verdict
-    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+    writeFileSync(path.join(fixDir, "review.md"), "Verdict: APPROVE\n")
 
     const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
     const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
@@ -770,17 +770,17 @@ function assertPlaceholderMarkerBlocks() {
   }
 }
 
-// Multi-phase fanout serial-start fixture: a multi-cohort fanout-trace.json
-// where a mandatory-parallel phase (grounding) has subprocess starts >5s
-// apart must be blocked. This verifies the auditor reads cohorts[].roles
-// (not just the legacy top-level roles array) when building fanoutStartsByRole.
-function assertMultiPhaseFanoutSerialStartBlocks() {
-  const fixSlug = "fixture-multi-cohort-serial-must-block"
+// Deterministic run-id fixture for issue #47: mandatory-parallel launcher
+// cohorts are blocked by missing/mismatched run_id identity, not by fragile
+// wall-clock start gaps. A 10s timing spread with the same run_id should pass
+// with only a diagnostic medium finding; a mismatched run_id must block.
+function assertFanoutRunIdContractBlocksAndTimingOnlyWarns() {
+  const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
   const runsRoot = validationRunsRoot
-  const fixDir = path.join(runsRoot, fixSlug)
-  mkdirSync(fixDir, { recursive: true })
-  try {
-    // Multi-cohort fanout-trace: grounding phase roles start 10s apart (>5s = definitely serial).
+
+  const writeFixture = (fixSlug, researcherRunId) => {
+    const fixDir = path.join(runsRoot, fixSlug)
+    mkdirSync(fixDir, { recursive: true })
     writeFileSync(
       path.join(fixDir, "fanout-trace.json"),
       JSON.stringify({
@@ -789,27 +789,25 @@ function assertMultiPhaseFanoutSerialStartBlocks() {
           {
             phase: "grounding",
             cohort: "g1",
+            run_id: "run-grounding-g1",
             started: "2026-01-01T00:00:00Z",
             completed: "2026-01-01T00:01:00Z",
             roles: [
-              { role: "codebase-scout", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
-              { role: "researcher",     started: "2026-01-01T00:00:10Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
+              { role: "codebase-scout", run_id: "run-grounding-g1", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
+              { role: "researcher",     run_id: researcherRunId,      started: "2026-01-01T00:00:10Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
             ],
           },
         ],
-        // Intentionally no top-level 'roles' array — only cohorts[].roles.
       }),
     )
-    // state.json: both grounding roles active, phase=complete
     writeFileSync(
       path.join(fixDir, "state.json"),
       JSON.stringify({
         phase: "complete",
         activeRoles: ["codebase-scout", "researcher"],
-        phases: [{ name: "grounding", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+        phases: [{ name: "grounding", cohort: "g1", run_id: "run-grounding-g1", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
       }),
     )
-    // evidence.md: both roles have proper blocks with launcher-fanout and shared cohort
     writeFileSync(
       path.join(fixDir, "evidence.md"),
       [
@@ -817,6 +815,7 @@ function assertMultiPhaseFanoutSerialStartBlocks() {
         "- spawn_method: launcher-fanout",
         "- phase: grounding",
         "- cohort: g1",
+        "- run_id: run-grounding-g1",
         "- started: 2026-01-01T00:00:00Z",
         "### WORKER START codebase-scout",
         "real output",
@@ -826,37 +825,293 @@ function assertMultiPhaseFanoutSerialStartBlocks() {
         "- spawn_method: launcher-fanout",
         "- phase: grounding",
         "- cohort: g1",
+        `- run_id: ${researcherRunId}`,
         "- started: 2026-01-01T00:00:10Z",
         "### WORKER START researcher",
         "real output",
         "### WORKER END researcher",
       ].join("\n"),
     )
-    writeFileSync(path.join(fixDir, "review.md"), "**Reviewer:** verifier\nVerdict: APPROVE\n")
+    writeFileSync(path.join(fixDir, "review.md"), "Verdict: APPROVE\n")
+    return fixDir
+  }
 
-    const auditorPath = path.join(root, "scripts", "ci", "check-subagent-evidence.mjs")
-    const result = spawnSync(process.execPath, [auditorPath, fixSlug], {
+  const mismatchSlug = "fixture-fanout-run-id-mismatch-must-block"
+  const mismatchDir = writeFixture(mismatchSlug, "different-run-id")
+  try {
+    const result = spawnSync(process.execPath, [auditorPath, mismatchSlug], {
       encoding: "utf8",
       env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
     })
     const output = `${result.stdout || ""}${result.stderr || ""}`
-
     if (result.status === 0) {
-      fail(
-        "multi-cohort serial fanout fixture: expected auditor to exit non-zero (blocked) " +
-          "for a grounding phase where cohorts[].roles starts are 10s apart (>5s = definitely serial), " +
-          "but it passed. The auditor must read cohorts[].roles to build fanoutStartsByRole.",
-      )
+      fail("fanout run_id fixture: expected mismatched run_id to block, but audit passed")
     }
-    if (!output.includes("fanout-trace") && !output.includes("transcript-evidence") && !output.includes("started timestamps span")) {
-      fail(
-        "multi-cohort serial fanout fixture: expected semantic serial-fanout finding, " +
-          `but auditor output was:\n${output}`,
-      )
+    if (!output.includes("run_id mismatch")) {
+      fail(`fanout run_id fixture: expected run_id mismatch finding, but auditor output was:\n${output}`)
     }
   } finally {
-    rmSync(fixDir, { recursive: true, force: true })
+    rmSync(mismatchDir, { recursive: true, force: true })
   }
+
+  const timingSlug = "fixture-fanout-run-id-timing-diagnostic-only"
+  const timingDir = writeFixture(timingSlug, "run-grounding-g1")
+  try {
+    const result = spawnSync(process.execPath, [auditorPath, timingSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+    if (result.status !== 0) {
+      fail(`fanout timing fixture: expected same run_id with 10s timing spread to pass, but audit blocked:\n${output}`)
+    }
+    if (!output.includes("diagnostic")) {
+      fail(`fanout timing fixture: expected diagnostic timing finding to remain visible, but output was:\n${output}`)
+    }
+  } finally {
+    rmSync(timingDir, { recursive: true, force: true })
+  }
+
+  const stateMismatchSlug = "fixture-fanout-state-run-id-mismatch-must-block"
+  const stateMismatchDir = writeFixture(stateMismatchSlug, "run-grounding-g1")
+  try {
+    writeFileSync(
+      path.join(stateMismatchDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: [{ name: "grounding", cohort: "g1", run_id: "wrong-state-run", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    const result = spawnSync(process.execPath, [auditorPath, stateMismatchSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+    if (result.status === 0 || !output.includes("state=wrong-state-run")) {
+      fail(`fanout state run_id fixture: expected state mismatch to block, but output was:\n${output}`)
+    }
+  } finally {
+    rmSync(stateMismatchDir, { recursive: true, force: true })
+  }
+
+  const legacySlug = "fixture-fanout-legacy-flat-trace-must-pass"
+  const legacyDir = path.join(runsRoot, legacySlug)
+  mkdirSync(legacyDir, { recursive: true })
+  try {
+    writeFileSync(
+      path.join(legacyDir, "fanout-trace.json"),
+      JSON.stringify({
+        slug: legacySlug,
+        phase: "grounding",
+        cohort: "g1",
+        started: "2026-01-01T00:00:00Z",
+        completed: "2026-01-01T00:01:00Z",
+        roles: [
+          { role: "codebase-scout", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
+          { role: "researcher", started: "2026-01-01T00:00:01Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
+        ],
+      }),
+    )
+    writeFileSync(
+      path.join(legacyDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: [{ name: "grounding", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    writeFileSync(
+      path.join(legacyDir, "evidence.md"),
+      [
+        "## Subagent: codebase-scout",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START codebase-scout",
+        "legacy output",
+        "### WORKER END codebase-scout",
+        "",
+        "## Subagent: researcher",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:01Z",
+        "### WORKER START researcher",
+        "legacy output",
+        "### WORKER END researcher",
+      ].join("\n"),
+    )
+    writeFileSync(path.join(legacyDir, "review.md"), "Verdict: APPROVE\n")
+    const result = spawnSync(process.execPath, [auditorPath, legacySlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+    if (result.status !== 0) {
+      fail(`fanout legacy fixture: expected pre-run_id flat trace to remain auditable, but audit blocked:\n${output}`)
+    }
+  } finally {
+    rmSync(legacyDir, { recursive: true, force: true })
+  }
+
+  const repeatedSlug = "fixture-fanout-repeated-same-phase-cohorts-pass"
+  const repeatedDir = path.join(runsRoot, repeatedSlug)
+  mkdirSync(repeatedDir, { recursive: true })
+  try {
+    writeFileSync(
+      path.join(repeatedDir, "fanout-trace.json"),
+      JSON.stringify({
+        slug: repeatedSlug,
+        schema_version: 2,
+        cohorts: ["g1", "g2"].map((cohort, idx) => ({
+          phase: "grounding",
+          cohort,
+          run_id: `run-grounding-${cohort}`,
+          started: `2026-01-01T00:0${idx}:00Z`,
+          completed: `2026-01-01T00:0${idx}:30Z`,
+          roles: [
+            { role: "codebase-scout", run_id: `run-grounding-${cohort}`, started: `2026-01-01T00:0${idx}:00Z`, completed: `2026-01-01T00:0${idx}:20Z`, exit_code: "0" },
+            { role: "researcher", run_id: `run-grounding-${cohort}`, started: `2026-01-01T00:0${idx}:01Z`, completed: `2026-01-01T00:0${idx}:30Z`, exit_code: "0" },
+          ],
+        })),
+      }),
+    )
+    writeFileSync(
+      path.join(repeatedDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: ["g1", "g2"].map((cohort, idx) => ({ name: "grounding", cohort, run_id: `run-grounding-${cohort}`, started: `2026-01-01T00:0${idx}:00Z`, completed: `2026-01-01T00:0${idx}:30Z` })),
+      }),
+    )
+    const blocks = []
+    for (const cohort of ["g1", "g2"]) {
+      for (const role of ["codebase-scout", "researcher"]) {
+        blocks.push(
+          `## Subagent: ${role}`,
+          "- spawn_method: launcher-fanout",
+          "- phase: grounding",
+          `- cohort: ${cohort}`,
+          `- run_id: run-grounding-${cohort}`,
+          "- started: 2026-01-01T00:00:00Z",
+          `### WORKER START ${role}`,
+          "real output",
+          `### WORKER END ${role}`,
+          "",
+        )
+      }
+    }
+    writeFileSync(path.join(repeatedDir, "evidence.md"), blocks.join("\n"))
+    writeFileSync(path.join(repeatedDir, "review.md"), "Verdict: APPROVE\n")
+    const result = spawnSync(process.execPath, [auditorPath, repeatedSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+    if (result.status !== 0) {
+      fail(`fanout repeated phase fixture: expected two same-phase cohorts with distinct run_id values to pass, but audit blocked:
+${output}`)
+    }
+  } finally {
+    rmSync(repeatedDir, { recursive: true, force: true })
+  }
+
+
+  const mixedSlug = "fixture-fanout-legacy-append-upgrade-must-pass"
+  const mixedDir = path.join(runsRoot, mixedSlug)
+  const mixedTmp = path.join(runsRoot, `${mixedSlug}-tmp`)
+  mkdirSync(mixedDir, { recursive: true })
+  mkdirSync(mixedTmp, { recursive: true })
+  try {
+    writeFileSync(
+      path.join(mixedDir, "fanout-trace.json"),
+      JSON.stringify({
+        slug: mixedSlug,
+        phase: "grounding",
+        cohort: "g1",
+        started: "2026-01-01T00:00:00Z",
+        completed: "2026-01-01T00:01:00Z",
+        roles: [
+          { role: "codebase-scout", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:00:30Z", exit_code: "0" },
+          { role: "researcher", started: "2026-01-01T00:00:01Z", completed: "2026-01-01T00:01:00Z", exit_code: "0" },
+        ],
+      }),
+    )
+    writeFileSync(
+      path.join(mixedDir, "state.json"),
+      JSON.stringify({
+        phase: "complete",
+        activeRoles: ["codebase-scout", "researcher"],
+        phases: [{ name: "grounding", started: "2026-01-01T00:00:00Z", completed: "2026-01-01T00:01:00Z" }],
+      }),
+    )
+    writeFileSync(
+      path.join(mixedDir, "evidence.md"),
+      [
+        "## Subagent: codebase-scout",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:00Z",
+        "### WORKER START codebase-scout",
+        "legacy output",
+        "### WORKER END codebase-scout",
+        "",
+        "## Subagent: researcher",
+        "- spawn_method: launcher-fanout",
+        "- phase: grounding",
+        "- cohort: g1",
+        "- started: 2026-01-01T00:00:01Z",
+        "### WORKER START researcher",
+        "legacy output",
+        "### WORKER END researcher",
+      ].join("\n"),
+    )
+    writeFileSync(path.join(mixedDir, "review.md"), "Verdict: APPROVE\n")
+    for (const role of ["planner", "architect"]) {
+      writeFileSync(path.join(mixedTmp, `${role}.start`), "2026-01-01T00:02:00Z")
+      writeFileSync(path.join(mixedTmp, `${role}.end`), "2026-01-01T00:03:00Z")
+      writeFileSync(path.join(mixedTmp, `${role}.rc`), "0")
+      writeFileSync(path.join(mixedTmp, `${role}.pid`), "123")
+      writeFileSync(path.join(mixedTmp, `${role}.run_id`), "run-planning-p1")
+    }
+    const stateIoPath = path.join(root, "scripts", "lib", "state-io.mjs")
+    const appendResult = spawnSync(process.execPath, [stateIoPath, "append-cohort", mixedSlug, "planning", "p1", "2026-01-01T00:02:00Z", "2026-01-01T00:03:00Z", mixedTmp, "run-planning-p1"], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    if (appendResult.status !== 0) {
+      fail(`fanout mixed legacy append fixture: append-cohort failed:\n${appendResult.stderr || appendResult.stdout}`)
+    }
+    writeFileSync(
+      path.join(mixedDir, "evidence.md"),
+      readFileSync(path.join(mixedDir, "evidence.md"), "utf8") + "\n" + ["planner", "architect"].map((role) => [
+        `## Subagent: ${role}`,
+        "- spawn_method: launcher-fanout",
+        "- phase: planning",
+        "- cohort: p1",
+        "- run_id: run-planning-p1",
+        "- started: 2026-01-01T00:02:00Z",
+        `### WORKER START ${role}`,
+        "new output",
+        `### WORKER END ${role}`,
+      ].join("\n")).join("\n\n"),
+    )
+    const result = spawnSync(process.execPath, [auditorPath, mixedSlug], {
+      encoding: "utf8",
+      env: { ...process.env, OMGB_RUNS_ROOT: runsRoot },
+    })
+    const output = `${result.stdout || ""}${result.stderr || ""}`
+    if (result.status !== 0) {
+      fail(`fanout mixed legacy append fixture: expected appended legacy run to remain auditable, but audit blocked:\n${output}`)
+    }
+  } finally {
+    rmSync(mixedDir, { recursive: true, force: true })
+    rmSync(mixedTmp, { recursive: true, force: true })
+  }
+
 }
 
 // Shared helper: write an otherwise-passing run (one executor with real

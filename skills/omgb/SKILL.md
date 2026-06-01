@@ -42,10 +42,10 @@ that native layout so Grok can discover them through ordinary plugin payloads.
 ## Launcher Fan-Out (recommended path under Grok 0.1.x)
 
 Grok 0.1.x's in-session leader does not reliably emit multiple
-`spawn_subagent` calls in a single assistant turn — every test we've run
-produced ~80s gaps between consecutive spawn calls. The v0.5.0
-transcript-based audit correctly blocks such runs. To produce a passing
-OMGB run today, use the **launcher-fanout** orchestration mode:
+`spawn_subagent` calls in a single assistant turn. To produce an auditable
+OMGB run today, use the **launcher-fanout** orchestration mode, which records
+a deterministic `run_id` shared by `state.json`, `fanout-trace.json`, and each
+role's evidence block:
 
 ```bash
 # Single phase cohort (e.g. grounding: scout + researcher in parallel)
@@ -57,12 +57,9 @@ scripts/workflow/launch-omgb-pipeline.sh <slug> "<task>" --launch
 
 The launcher itself acts as the orchestrator and forks N parallel
 `grok --agent <role>` subprocesses, one per role. Each subprocess is a
-single-role headless grok session. Their wall-clock start timestamps are
-recorded in `<rundir>/fanout-trace.json` and the audit reads that as
-ground truth (same role as Grok's session `events.jsonl` for in-session
-spawns). Subprocesses spawned by the launcher start within milliseconds
-of each other — true wall-clock parallelism, not assistant-turn
-parallelism.
+single-role headless grok session. The launcher records per-role timings and a
+shared `run_id` in `<rundir>/fanout-trace.json`; the audit uses that `run_id`
+identity as the blocking contract and reports timing gaps only as diagnostics.
 
 The in-session leader path (`/omgb` skill loaded into one grok session)
 remains the primary contract. When Grok's leader gains real single-turn
@@ -103,6 +100,7 @@ For every role the leader activates in this run, append to `evidence.md`:
 - invocation: <exact command, Task call id, or session id>
 - phase: intake | grounding | planning | execution | verification | review | fix-loop | finalization
 - cohort: <id, e.g. "g1"> | serial-by-design  (with `- serial_reason: ...` on the next line if serial-by-design)
+- run_id: <deterministic id shared by state.json, fanout-trace.json, and every role in this cohort; launcher-fanout writes this automatically>
 - started: <ISO-8601>
 - completed: <ISO-8601>
 - duration_ms: <completed - started, integer milliseconds>
@@ -117,13 +115,13 @@ The worker output excerpt MUST come back inside the `### WORKER START <role>` /
 `### WORKER END <role>` markers that every worker file requires. The leader
 copies that block verbatim — no paraphrase.
 
-**The audit reads Grok's events.jsonl as ground truth for spawn timing.**
-The leader-recorded `started:` / `completed:` / `duration_ms:` fields are
-descriptive. The audit pass/fail on parallel cohorts is decided by the
-host transcript at `~/.grok/sessions/<urlencoded-cwd>/<session-uuid>/events.jsonl`,
-not by these claims. A hand-crafted "cohort: g1 + started 2s apart" will
-be flagged as a high-severity contract violation if the transcript shows
-the underlying spawns were 86s apart.
+**The audit treats timing as diagnostic and identity as the hard contract.**
+For launcher-fanout runs, mandatory-parallel cohorts pass or fail on the
+shared `run_id` recorded in `state.json.phases[]`, `fanout-trace.json`, and
+each `evidence.md` role block. For Task-tool runs, Grok session `events.jsonl`
+remains a transcript evidence source, but timing gaps are warnings unless
+deterministic identity evidence is missing or inconsistent. The leader-recorded
+`started:` / `completed:` / `duration_ms:` fields are descriptive.
 
 ### What to do when subagents are unavailable
 
@@ -191,14 +189,16 @@ Every `## Subagent: <role>` block grows two optional fields:
 
 ```
 - phase:   intake | grounding | planning | execution | verification | review | fix-loop | finalization
-- cohort:  <short id, e.g. "g1", "review-r1"> — roles spawned in the SAME assistant turn share an id
+- cohort:  <short id, e.g. "g1", "review-r1"> — roles spawned in the same launcher/turn share an id
+- run_id:  <deterministic cohort id shared across state.json, fanout-trace.json, and evidence.md>
 ```
 
 The audit (`node scripts/ci/validate.mjs --audit-run <slug>`) reads these.
-For each mandatory-parallel cohort (Grounding, Review) the audit verifies
-that all participating roles share a single cohort id and that their
-`started` timestamps are within 60 seconds of each other. Otherwise it
-emits a high-severity finding: `concurrency-violation: <phase> ran serially`.
+For each mandatory-parallel launcher-fanout cohort (Grounding, Review), it
+requires all participating roles to share one `cohort` and one deterministic
+`run_id` across `state.json`, `fanout-trace.json`, and `evidence.md`. Timing
+spreads are reported as diagnostics only; missing or mismatched identity is
+the high-severity violation.
 
 When two roles legitimately depend on each other (e.g., architect reads
 planner output before producing its verdict), the leader records `cohort:

@@ -135,6 +135,7 @@ For every role you spawn in any phase, append to `evidence.md`:
 - invocation: <exact command, Task call id, or session id>
 - phase: intake | grounding | planning | execution | verification | review | fix-loop | finalization
 - cohort: <id, e.g. "g1"> | serial-by-design  (add `- serial_reason: ...` if serial-by-design)
+- run_id: <deterministic id shared by state.json, fanout-trace.json, and every role in this cohort; launcher-fanout writes this automatically>
 - started: <ISO-8601>
 - completed: <ISO-8601>
 - duration_ms: <completed - started, integer milliseconds>
@@ -151,12 +152,12 @@ the block as-is. You do not paraphrase, condense, or rewrite it. If the worker
 forgot the markers, re-spawn the worker with a reminder; do not invent the
 output.
 
-**Do not fabricate `started:` / `completed:` / `duration_ms:` fields to make
-a serial run look parallel.** The audit reads the host's
-`events.jsonl` directly. A claimed `cohort: g1 + started 2 seconds apart`
-will surface a high-severity finding if the transcript shows your two
-`spawn_subagent` `tool_started` events were 86 seconds apart — the audit
-prints the real gap in the report.
+**Do not fabricate `run_id` or timing fields to make a serial run look parallel.**
+For launcher-fanout, the audit requires the same deterministic `run_id` in
+`state.json.phases[]`, `fanout-trace.json`, and every role evidence block for
+that cohort; timing gaps are diagnostic only. For Task-tool spawning, the host
+`events.jsonl` remains transcript evidence, but identity consistency is the
+blocking contract wherever `run_id` is available.
 
 ### Phase-duration recording
 

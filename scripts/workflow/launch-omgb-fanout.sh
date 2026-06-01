@@ -151,9 +151,11 @@ _existing_count=$(node -e "
 " "$RUN_DIR/fanout-trace.json" "$PHASE" 2>/dev/null || echo 1)
 COHORT_ID="${PHASE:0:1}${_existing_count}"
 RUN_STARTED_ISO="$(iso_now)"
+RUN_ID="${SHORT_SLUG}:${PHASE}:${COHORT_ID}:${RUN_STARTED_ISO}"
 
 echo "[fanout] phase:        $PHASE"
 echo "[fanout] cohort:       $COHORT_ID"
+echo "[fanout] run_id:       $RUN_ID"
 echo "[fanout] roles:        ${ROLES[*]}"
 echo "[fanout] run dir:      $RUN_DIR_HOME"
 echo "[fanout] plugin link:  $RUN_DIR_LINK -> $RUN_DIR_HOME"
@@ -352,6 +354,7 @@ for role in "${ROLES[@]}"; do
   # the closing brace forks the whole subshell in parallel.
   (
     iso_now > "$TRACE_TMP/$role.start"
+    printf '%s\n' "$RUN_ID" > "$TRACE_TMP/$role.run_id"
 
     # Read effort from the role's toml (role-local effort routing)
     effort=$(grep -E '^(reasoning_effort|effort)\s*=' "$ROOT/roles/$role.toml" 2>/dev/null | head -1 | sed -E 's/.*= *["'\'']?([^"'\'' ]+)["'\'']?.*/\1/' | tr -d '\r')
@@ -438,6 +441,7 @@ $(printf '%s' "$out" | head -c 800)
     echo "- invocation: grok --agent agents/$role.md (subprocess pid=$pid)"
     echo "- phase: $PHASE"
     echo "- cohort: $COHORT_ID"
+    echo "- run_id: $RUN_ID"
     echo "- started: $start"
     echo "- completed: $end"
     echo "- duration_ms: $duration_ms"
@@ -453,7 +457,7 @@ done
 #   - append-cohort updates fanout-trace.json (cohorts array) + state.json
 #     (phases array, activeRoles, updatedAt) atomically.
 node "$STATE_IO" append-cohort "$SHORT_SLUG" "$PHASE" "$COHORT_ID" \
-  "$RUN_STARTED_ISO" "$RUN_COMPLETED_ISO" "$TRACE_TMP" >/dev/null
+  "$RUN_STARTED_ISO" "$RUN_COMPLETED_ISO" "$TRACE_TMP" "$RUN_ID" >/dev/null
 
 # Single-shot fanout (no --append): mark the run complete via state-io.
 # Append-mode runs leave the run active; the pipeline driver finalizes
@@ -471,7 +475,7 @@ Roles: ${ROLES[*]}
 Phase: $PHASE
 Cohort: $COHORT_ID
 
-**Verdict:** N/A — bounded fan-out cohort. No code changes performed; no full review pass run. The cohort proves the launcher-fanout orchestration model and the audit's transcript-based concurrency check.
+**Verdict:** N/A — bounded fan-out cohort. No code changes performed; no full review pass run. The cohort proves the launcher-fanout orchestration model and the audit's run_id-based cohort identity check.
 EOF
 
 # Cleanup tmp dir
