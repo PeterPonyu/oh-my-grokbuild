@@ -25,6 +25,12 @@
 
 set -euo pipefail
 
+# Contract aliases: OMX_E2E_* are the cross-repo canonical flags; the OMGB_*
+# flags remain the brand-native names.
+: "${OMGB_E2E_STRUCTURAL:=${OMX_E2E_STRUCTURAL:-0}}"
+: "${OMGB_E2E_HEADLESS:=${OMX_E2E_HEADLESS:-0}}"
+: "${OMGB_E2E_REAL_OMGB:=${OMX_E2E_REAL:-0}}"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 EVIDENCE_DIR="${OMGB_EVIDENCE_DIR:-$ROOT/.omgb/evidence}"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -87,6 +93,18 @@ ok() {
 
 step() {
   log "STEP: $*"
+}
+
+write_result() {
+  # args: tier journey passed("true"/"false")
+  local tier="$1" journey="$2" passed="$3"
+  RF="$EVIDENCE_DIR/e2e-result.json" node -e '
+    const [tier, journey, passed, log] = process.argv.slice(1);
+    require("fs").writeFileSync(process.env.RF, JSON.stringify({
+      tier, host: "grok", journey, passed: passed === "true",
+      evidence_paths: [log], marker: `[OMGB] e2e passed (tier=${tier})`
+    }, null, 2));
+  ' "$tier" "$journey" "$passed" "$LOG"
 }
 
 resolve_path() {
@@ -380,7 +398,8 @@ FAKEGROK
   step "fake headless reachability"
   run_headless_probe
 
-  log "[OMGB] structural e2e passed"
+  write_result "structural" "structural payload + fake headless" "true"
+  log "[OMGB] structural e2e passed (tier=structural)"
 }
 
 main() {
@@ -518,7 +537,8 @@ main() {
     run_headless_probe
   elif [[ "${OMGB_E2E_ALLOW_HEADLESS_SKIP:-0}" = "1" ]]; then
     log "SKIP: headless reachability (explicit structural mode via OMGB_E2E_ALLOW_HEADLESS_SKIP=1)"
-    log "[OMGB] structural e2e passed (headless skipped)"
+    write_result "structural" "structural payload (headless skipped)" "true"
+    log "[OMGB] structural e2e passed (tier=structural)"
     return 0
   else
     fail "headless reachability was not run; set OMGB_E2E_HEADLESS=1 for full E2E or OMGB_E2E_ALLOW_HEADLESS_SKIP=1 for structural-only validation"
@@ -528,7 +548,10 @@ main() {
     run_real_omgb_probe
   fi
 
-  log "[OMGB] e2e passed"
+  local tier="headless"
+  [[ "${OMGB_E2E_REAL_OMGB:-0}" = "1" ]] && tier="real"
+  write_result "$tier" "/omgb full run" "true"
+  log "[OMGB] e2e passed (tier=$tier)"
 }
 
 if [[ "${OMGB_E2E_LIB_ONLY:-0}" != "1" ]]; then
