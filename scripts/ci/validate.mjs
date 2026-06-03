@@ -1368,6 +1368,8 @@ function assertValidateRejectsUnknownFlag() {
 // The legacy Claude namespace belongs to oh-my-claudecode; oh-my-grokbuild writes its
 // own evidence under .omgb/. Peer-project mentions in research/changelog/prd
 // remain allowed because they document the broader ecosystem.
+const DOC_LINT_DIRS = ["docs/specs", "docs/plans"]
+
 function assertNoBrandLeakInScripts() {
   const brandNamespace = ".om" + "c/"
   const brandLeakRe = new RegExp("\\.om" + "c/")
@@ -1382,6 +1384,23 @@ function assertNoBrandLeakInScripts() {
       const text = readText(rel)
       if (brandLeakRe.test(text)) {
         fail(`brand leak: ${rel} references ${brandNamespace} — first-party scripts must use .omgb/`)
+      }
+    }
+  }
+  // Doc guard: design/plan docs that describe the installer's evidence path must
+  // use the canonical .omgb/evidence/ runtime dir, not the legacy peer-project
+  // evidence path. Catches doc drift the script scan above misses.
+  const docEvidenceRe = new RegExp("\\.om" + "c/evidence")
+  for (const dir of DOC_LINT_DIRS) {
+    const fullDir = path.join(root, dir)
+    if (!existsSync(fullDir)) continue
+    for (const entry of readdirSync(fullDir)) {
+      const rel = path.join(dir, entry)
+      const full = path.join(root, rel)
+      if (!statSync(full).isFile() || !entry.endsWith(".md")) continue
+      const text = readText(rel)
+      if (docEvidenceRe.test(text)) {
+        fail(`brand leak: ${rel} references ${brandNamespace}evidence — docs must use the canonical .omgb/evidence/ path`)
       }
     }
   }
