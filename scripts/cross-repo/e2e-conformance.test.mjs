@@ -58,3 +58,38 @@ test('fails when the harness script is absent', () => {
   assert.equal(r.passed, false);
   assert.ok(r.failures.some((f) => f.includes('scripts/local/e2e.sh')));
 });
+
+test('passes when runStructural is true and the structural run prints the marker', () => {
+  const scripts = {
+    ...VALID_SCRIPTS,
+    'e2e:structural': "node -e \"console.log('[OMGB] structural e2e passed')\"",
+  };
+  const dir = makeRepo({ contract: VALID_CONTRACT, scripts });
+  const r = checkRepoConformance(dir, { runStructural: true });
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(r.passed, true, JSON.stringify(r.failures));
+});
+
+test('fails when runStructural is true and the structural run exits non-zero', () => {
+  const scripts = {
+    ...VALID_SCRIPTS,
+    'e2e:structural': 'node -e "process.exit(1)"',
+  };
+  const dir = makeRepo({ contract: VALID_CONTRACT, scripts });
+  const r = checkRepoConformance(dir, { runStructural: true });
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(r.passed, false);
+  assert.ok(r.failures.some((f) => f.includes('e2e:structural failed')));
+});
+
+test('fails when e2e-contract.json is not valid JSON', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'e2e-conf-'));
+  writeFileSync(join(dir, 'e2e-contract.json'), '{bad json');
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', scripts: VALID_SCRIPTS }));
+  mkdirSync(join(dir, 'scripts', 'local'), { recursive: true });
+  writeFileSync(join(dir, 'scripts', 'local', 'e2e.sh'), '#!/usr/bin/env bash\n');
+  const r = checkRepoConformance(dir, { runStructural: false });
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(r.passed, false);
+  assert.ok(r.failures.some((f) => f.includes('e2e-contract.json is not valid JSON')));
+});

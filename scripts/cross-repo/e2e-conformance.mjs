@@ -31,13 +31,17 @@ export function checkRepoConformance(repoDir, opts = {}) {
   if (!existsSync(pkgPath)) {
     failures.push('missing package.json');
   } else {
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    const scripts = pkg.scripts || {};
-    for (const s of REQUIRED_SCRIPTS) {
-      if (!scripts[s]) failures.push(`package.json missing required script: ${s}`);
-    }
-    if (scripts.verify && !/npm (run )?test/.test(scripts.verify)) {
-      failures.push('verify script must run the test suite (npm test)');
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      const scripts = pkg.scripts || {};
+      for (const s of REQUIRED_SCRIPTS) {
+        if (!scripts[s]) failures.push(`package.json missing required script: ${s}`);
+      }
+      if ('verify' in scripts && !/npm (run )?test/.test(scripts.verify ?? '')) {
+        failures.push('verify script must run the test suite (npm test)');
+      }
+    } catch (e) {
+      failures.push(`package.json is not valid JSON: ${e.message}`);
     }
   }
 
