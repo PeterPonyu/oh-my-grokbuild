@@ -1,0 +1,10 @@
+{
+  "brand": "OMGB",
+  "host": "grok",
+  "hostClass": "host-plugin",
+  "evidenceDir": ".omgb/evidence",
+  "journey": "/omgb skill load -> 16-role agents JSON -> real run -> transcript+marker",
+  "markerPrefix": "OMGB",
+  "requiresSecret": true,
+  "npmScripts": ["e2e:structural", "e2e:headless", "e2e:real", "verify"]
+}
