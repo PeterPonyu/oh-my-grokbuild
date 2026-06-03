@@ -18,16 +18,16 @@ This plan spans **four independent git repos**. It is organized into **six phase
 
 Because the per-repo host-CLI invocation details (exact headless flags, auth materialization, transcript layout) are external unknowns, **each plugin-repo phase begins with a feasibility spike task whose output supplies the exact commands** used by the remaining tasks in that phase. This is deliberate sequencing, not a placeholder.
 
-**Repo → brand token → host class** (locked; used throughout):
+**Repo → brand token → host class** (CONFIRMED by the 2.0/3.0/4.0 spikes; tokens derived from each repo's OWN existing brand convention to avoid brand leakage):
 
-| Repo | Brand token | Evidence dir | Host class | Real tier needs secret? |
+| Repo | Brand token | Evidence dir | Host class | Real tier auth (CI secret) |
 |---|---|---|---|---|
-| oh-my-grokbuild | `OMGB` | `.omgb/evidence` | host-plugin (grok) | yes (`GROK_AUTH_JSON`) |
-| oh-my-antigravity | `OMAG` | `.omag/evidence` | standalone CLI | **no** |
-| oh-my-copilot | `OMCOP` | `.omcop/evidence` | host-plugin (Copilot CLI) | yes (`COPILOT_TOKEN`) |
-| oh-my-cursor | `OMCUR` | `.omcur/evidence` | host-plugin (cursor-agent) | yes (`CURSOR_API_KEY`) |
+| oh-my-grokbuild | `OMGB` | `.omgb/evidence` | host-plugin (grok) | `GROK_AUTH_JSON` → `~/.grok/auth.json` |
+| oh-my-antigravity | `OAG` | `.oag/evidence` | standalone CLI | **none** (deterministic; isolation via `OH_MY_ANTIGRAV_HOME`, success field `complete:true`) |
+| oh-my-copilot | `OMCP` | `.omcp/evidence` | host-plugin (Copilot CLI) | `COPILOT_GITHUB_TOKEN` (also accepts `GH_TOKEN`/`GITHUB_TOKEN`); model `gpt-5-mini`; **no root `package.json` — must create one** |
+| oh-my-cursor | `OMCS` | `.omcs/evidence` | host-plugin (cursor-agent) | `CURSOR_API_KEY` (+ optional bridge `OH_MY_CURSOR_MCP_TOKEN`, off by default); state at `.cursor/state/workflow-state.json` |
 
-> Brand tokens for antigravity/copilot/cursor are proposed defaults; Task 2.0 / 3.0 / 4.0 spikes confirm or correct each repo's existing brand convention before use.
+> Spike-confirmed corrections vs the original draft: antigravity brand is `OAG` (not `OMAG`) and uses `OH_MY_ANTIGRAV_HOME`; copilot plugin namespace is `omcp` (skills invoked as `copilot --agent omcp:<skill>`), auth is `COPILOT_GITHUB_TOKEN` (not `COPILOT_TOKEN`), and it has **no root package.json**; cursor brand is `OMCS`, auth `CURSOR_API_KEY`, real state file is `.cursor/state/workflow-state.json`. These derived tokens were approved by the maintainer.
 
 ---
 
