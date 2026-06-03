@@ -69,9 +69,21 @@ Bundled examples cross-checked include `agents/explore.md`,
 
 Local plugins live under `~/.grok/plugins/local/<plugin-name>/`. Grok also
 maintains `~/.grok/marketplace-cache/<hash>/` for marketplace-fetched plugins.
-The `installed_plugins.json` index is sibling to the Claude marketplace cache
-at `~/.claude/plugins/installed_plugins.json` because Grok shares the
-Claude-style plugin discovery surface.
+
+Per the official xAI docs
+(<https://docs.x.ai/build/features/skills-plugins-marketplaces>), Grok discovers
+plugins from `./.grok/plugins/`, `~/.grok/plugins/`, marketplace installs under
+`~/.grok/plugins/marketplaces/`, and extra `[plugins] paths` in
+`~/.grok/config.toml`; marketplace sources are configured via
+`[[marketplace.sources]]` in `~/.grok/config.toml` and
+`~/.grok/plugins/known_marketplaces.json`.
+
+> Observed locally on grok `0.1.212` (not in the official docs): an
+> `installed_plugins.json` index appears sibling to the Claude marketplace cache
+> at `~/.claude/plugins/installed_plugins.json`, consistent with Grok also
+> reading the Claude Code plugin discovery surface via its Claude-compatibility
+> layer. Treat this specific sibling-index path as a local observation, not a
+> documented contract; the official config locations above are authoritative.
 
 OMGB ships:
 

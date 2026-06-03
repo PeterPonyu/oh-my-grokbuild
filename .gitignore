@@ -2,6 +2,11 @@
 node_modules/
 *.log
 
+# Source-brand config dir at repo root: not used by this Grok plugin.
+# The legitimate Claude-compat manifest lives under .claude-plugin/ (tracked);
+# a bare root .claude/ is a stray artifact and must never be committed.
+/.claude/
+
 # OS / editor noise
 .DS_Store
 Thumbs.db

@@ -127,7 +127,7 @@ Future asset additions (new role files, new top-level documentation the local pl
 
 ### 5.3 Evidence, Logging & Messaging
 
-- All drift decisions are appended to the existing `.omc/evidence/install-<timestamp>.log`.
+- All drift decisions are appended to the existing `.omgb/evidence/install-<timestamp>.log`.
 - Terminal output from the installer is clear, non-alarmist, and ends with the familiar next-steps list (reload TUI, run doctor, etc.).
 - Doctor success/failure summary text is updated to mention the new "mount source vs current tree" check.
 

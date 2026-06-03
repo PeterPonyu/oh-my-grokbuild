@@ -22,6 +22,19 @@ plugin avoids unstable surfaces and keeps its behavior in one markdown skill
 plus per-role files that match Grok's own bundled extension layout
 (`~/.grok/bundled/skills/`, `~/.grok/bundled/agents/`, `~/.grok/bundled/roles/`).
 
+### Skill discovery via Grok's Claude-compatibility loader
+
+`skills/omgb/SKILL.md` is a Claude-style YAML-frontmatter markdown skill. `/omgb`
+becomes invocable because Grok's official Claude-compatibility layer reads
+Claude Code skills (and plugins, marketplaces, agents, hooks, and `CLAUDE.md`
+files) alongside its native `.grok/` surfaces — see the xAI docs:
+<https://docs.x.ai/build/features/skills-plugins-marketplaces>. In other words,
+`/omgb` discovery depends on Grok's documented Claude-compat skill loader
+consuming `SKILL.md`, not on a native per-skill JSON manifest. If a future Grok
+release gates the Claude-compat path behind a flag, the native form would be a
+markdown skill placed directly under `.grok/skills/` (or a future native skill
+manifest). This dependency is intentional and currently supported.
+
 ## Layout
 
 ```

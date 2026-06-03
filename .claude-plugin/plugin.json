@@ -2,6 +2,7 @@
   "name": "oh-my-grokbuild",
   "version": "0.7.3",
   "description": "Compatibility manifest for hosts that discover Claude-style markdown skills.",
+  "_provenance": "Grok Claude-compatibility manifest. oh-my-grokbuild is a Grok Build plugin; this shim lets Grok's documented Claude-compat loader discover skills/omgb/SKILL.md alongside the root plugin.json. See https://docs.x.ai/build/features/skills-plugins-marketplaces and README.md.",
   "skills": [
     "../skills/omgb"
   ]

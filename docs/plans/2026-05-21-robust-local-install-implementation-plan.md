@@ -24,7 +24,7 @@ The installed `omgb` user-skill mount (`~/.grok/skills/omgb`) and the local plug
   4. `readlink -f ~/.grok/skills/omgb/SKILL.md` now resolves inside B.
   5. `doctor.sh` (run from B) reports clean green pass for the current tree.
   6. After TUI reload or `/skills`, `omgb` is listed and `/omgb` is invocable.
-- Drift decision messages appear in `.omc/evidence/install-*.log` and are human-readable.
+- Drift decision messages appear in `.omgb/evidence/install-*.log` and are human-readable.
 - `local-payload.txt` is the **only** place listing the distributable payload contents (no remaining duplication in `install-local.sh`, `e2e.sh`, or `validate.mjs`).
 - Documentation is updated and the "why did my local skill stop showing after a move?" question is answered by running `doctor.sh`.
 - No violations of AGENTS.md boundaries (only `skills/omgb/SKILL.md` is a skill; `plugin.json` / `.claude-plugin/plugin.json` untouched; no new runtime deps).
@@ -59,7 +59,7 @@ The installed `omgb` user-skill mount (`~/.grok/skills/omgb`) and the local plug
   - `validate.mjs:177-183` (source-tree `assertExists` for a superset; smoke walks `skills`/`agents` for deeper integrity).
 - Mount health in doctor (`doctor.sh:54-66`) only checks "contains omgb" via string match; never compares against the *current* script's `$ROOT`.
 - Mount creation (`install-local.sh:142-146`) uses unconditional `mkdir -p` + `ln -sfn` (no prior inspection of existing target).
-- Evidence logging already exists via `log()` helper writing to `.omc/evidence/install-*.log`.
+- Evidence logging already exists via `log()` helper writing to `.omgb/evidence/install-*.log`.
 - All scripts target bash 3.2+ (no associative arrays, `mapfile`, etc.).
 
 The plan re-uses the dynamic `ROOT`, `--force`, and `OMGB_SKIP_USER_SKILL_MOUNT` contract exactly.
@@ -318,7 +318,7 @@ The variable `USER_SKILL_DIR` is now defined at the top of the block.
 - Installer still succeeds on a fresh or same-tree run (no spurious healing).
 - When a stale mount exists, running `--force` from the new location produces the exact three-line drift log block (with `[OMGB] Drift detected`).
 - The resulting `readlink -f .../SKILL.md` resolves inside the current `$ROOT`.
-- Evidence log (`.omc/evidence/install-*.log`) contains the drift messages.
+- Evidence log (`.omgb/evidence/install-*.log`) contains the drift messages.
 - `npm test` + e2e still pass.
 - `--force` on a clean tree remains a cheap `ln -sfn` (no unnecessary rm).
 
@@ -326,7 +326,7 @@ The variable `USER_SKILL_DIR` is now defined at the top of the block.
 ```bash
 ./scripts/local/install-local.sh --force
 ./scripts/local/doctor.sh          # must be green for current tree
-cat .omc/evidence/install-*.log | tail -30
+cat .omgb/evidence/install-*.log | tail -30
 ```
 
 Commit after the above + a successful `npm test`.
@@ -502,7 +502,7 @@ npm test && bash scripts/local/e2e.sh
 # Then the full manual relocation steps from docs/REPO-RELOCATION-TEST.md
 ./scripts/local/doctor.sh | cat
 readlink -f ~/.grok/skills/omgb/SKILL.md
-ls -l .omc/evidence/install-*.log | tail -1
+ls -l .omgb/evidence/install-*.log | tail -1
 ```
 
 ---
