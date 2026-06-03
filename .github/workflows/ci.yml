@@ -59,3 +59,26 @@ jobs:
           export HOME="$RUNNER_TEMP/omgb-home"
           export PATH="$HOME/.grok/bin:$PATH"
           OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh
+
+  e2e-real:
+    name: real /omgb e2e (consumes Grok quota)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Materialize Grok auth from secret
+        env:
+          GROK_AUTH_JSON: ${{ secrets.GROK_AUTH_JSON }}
+        run: |
+          test -n "$GROK_AUTH_JSON" || { echo "GROK_AUTH_JSON secret not set"; exit 1; }
+          mkdir -p "$HOME/.grok/bin"
+          printf '%s' "$GROK_AUTH_JSON" > "$HOME/.grok/auth.json"
+      - name: Ensure grok CLI available
+        run: command -v grok || { echo "grok CLI not installed on runner — install step TBD by maintainer"; exit 1; }
+      - name: Install local payload
+        run: scripts/local/install-local.sh --force
+      - name: Run real /omgb e2e
+        run: npm run e2e:real
