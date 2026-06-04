@@ -33,6 +33,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install grok CLI
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.grok/bin" >> $GITHUB_PATH
       - name: Install local payload into temp Grok home
         run: |
           export HOME="$RUNNER_TEMP/omgb-home"
@@ -54,10 +58,9 @@ jobs:
           export PATH="$HOME/.grok/bin:$PATH"
           printf '{}\n' > "$HOME/.grok/auth.json"
           scripts/local/doctor.sh
-      - name: Structural e2e with fake Grok CLI
+      - name: Structural e2e with real Grok CLI
         run: |
           export HOME="$RUNNER_TEMP/omgb-home"
-          export PATH="$HOME/.grok/bin:$PATH"
           OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh
 
   e2e-real:
