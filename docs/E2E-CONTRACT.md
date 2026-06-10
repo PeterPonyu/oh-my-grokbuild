@@ -13,8 +13,24 @@ verified mechanically by `e2e-conformance.mjs` at the tools root.
 - `e2e:structural`, `e2e:headless`, `e2e:real`
 - `verify` = `npm test && npm run e2e:structural`
 
-## Required env flags (brand-specific flags MAY alias these)
-- `OMX_E2E_STRUCTURAL=1`, `OMX_E2E_HEADLESS=1`, `OMX_E2E_REAL=1`
+## Required env flags
+Each repo uses its own brand-prefixed canonical flags. Cross-repo `OMX_E2E_*`
+names are **aliases** only — they are accepted as fallbacks when the brand flag
+is unset, not as the primary names.
+
+| Canonical (brand-native) | Cross-repo alias |
+|---|---|
+| `OMGB_E2E_STRUCTURAL=1` | `OMX_E2E_STRUCTURAL=1` |
+| `OMGB_E2E_HEADLESS=1` | `OMX_E2E_HEADLESS=1` |
+| `OMGB_E2E_REAL_OMGB=1` | `OMX_E2E_REAL=1` |
+
+In `scripts/local/e2e.sh` the resolution order is (bash parameter expansion):
+```
+: "${OMGB_E2E_STRUCTURAL:=${OMX_E2E_STRUCTURAL:-0}}"
+```
+i.e. `OMGB_*` wins if set, `OMX_*` is the fallback. Set the brand-native flag
+in scripts and documentation; the `OMX_*` aliases exist for the cross-repo
+conformance harness only.
 
 ## Required artifacts (real tier)
 - A log at `<evidenceDir>/e2e-<UTC>.log`
