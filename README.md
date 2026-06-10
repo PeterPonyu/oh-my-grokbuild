@@ -202,11 +202,12 @@ explicitly changes that contract.
 
 | Env var | Default | Effect |
 | --- | --- | --- |
+| `OMGB_E2E_STRUCTURAL` | unset | Set to `1` to run the credential-free structural probe in `scripts/local/e2e.sh` (fake grok binary; no auth needed; writes tier-tagged `e2e-result.json`). Alias: `OMX_E2E_STRUCTURAL` (accepted as fallback by the cross-repo conformance harness). |
 | `OMGB_E2E_HEADLESS` | unset | Set to `1` to enable the live model reachability probe in `scripts/local/e2e.sh` (consumes a real Grok turn; does not invoke `/omgb` by itself). Alias: `OMX_E2E_HEADLESS` (accepted as fallback by the cross-repo conformance harness). |
 | `OMGB_E2E_REAL_OMGB` | unset | Set to `1` together with `OMGB_E2E_HEADLESS=1` to run an isolated real `/omgb` headless probe that must emit `OMGB_REAL_OMGB_OK` (consumes additional Grok quota). Alias: `OMX_E2E_REAL`. |
 | `OMGB_E2E_REAL_OMGB_TIMEOUT` | `180` | Timeout in seconds for the opt-in real `/omgb` probe. |
 | `OMGB_E2E_STRICT_AUDIT` | unset | Set to `1` to make `scripts/local/e2e.sh` fail when the canonical `~/.grok/omgb/runs` audit has findings; useful for release gating. |
-| `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (structural check only). Alias: `OMX_E2E_STRUCTURAL` (sets the structural-only flag via the cross-repo alias). |
+| `OMGB_E2E_ALLOW_HEADLESS_SKIP` | unset | Set to `1` to allow `e2e.sh` to pass without a live Grok login (skips the live headless probe; requires the auth check to have been reached). No `OMX_*` alias. |
 | `OMGB_ALLOW_SYNTHESIS` | unset | Set `OMGB_ALLOW_SYNTHESIS: true` in a run's `mission.md` to allow single-context synthesis as a fallback when subagents are unavailable. |
 | `OMGB_SUBAGENT_STALL_MS` | `600000` | Per-subagent duration threshold (ms) for stall warnings in `--audit-run` / `--audit-all`. Subagents whose recorded duration exceeds this value print a `WARN` line in the audit report. WARN-only; does not change exit code. |
 | `OMGB_RUNS_ROOT` | `~/.grok/omgb/runs` | Overrides where state-io, launchers, exporter, and auditor read/write OMGB run directories. Useful for hermetic tests and CI probes. |

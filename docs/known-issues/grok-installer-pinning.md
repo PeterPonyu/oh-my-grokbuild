@@ -11,7 +11,6 @@ The `shell-lanes` CI job installs the grok CLI via:
 ```yaml
 - name: Install grok CLI
   run: |
-    # UNPINNED — see this file for details
     curl -fsSL https://x.ai/cli/install.sh | bash
 ```
 
