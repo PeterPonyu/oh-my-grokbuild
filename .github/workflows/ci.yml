@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -30,9 +33,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+      - name: Install grok CLI
+        run: |
+          curl -fsSL https://x.ai/cli/install.sh | bash
+          echo "$HOME/.grok/bin" >> $GITHUB_PATH
       - name: Install local payload into temp Grok home
         run: |
           export HOME="$RUNNER_TEMP/omgb-home"
@@ -54,8 +63,50 @@ jobs:
           export PATH="$HOME/.grok/bin:$PATH"
           printf '{}\n' > "$HOME/.grok/auth.json"
           scripts/local/doctor.sh
-      - name: Structural e2e with fake Grok CLI
+      - name: Structural e2e with real Grok CLI
         run: |
           export HOME="$RUNNER_TEMP/omgb-home"
-          export PATH="$HOME/.grok/bin:$PATH"
           OMGB_E2E_ALLOW_HEADLESS_SKIP=1 scripts/local/e2e.sh
+
+  e2e-real:
+    name: real /omgb e2e (consumes Grok quota)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Skip-clean gate (mirrors the OMGB_E2E_ALLOW_*_SKIP convention): without
+      # the GROK_AUTH_JSON secret the real tier cannot run — skip honestly with
+      # a log notice and no pass marker instead of hard-failing every push.
+      - name: Gate on credential (skip cleanly when absent)
+        id: gate
+        env:
+          GROK_AUTH_JSON: ${{ secrets.GROK_AUTH_JSON }}
+        run: |
+          if [ -z "$GROK_AUTH_JSON" ]; then
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::GROK_AUTH_JSON secret absent — real /omgb e2e SKIPPED cleanly (no pass marker emitted)."
+          else
+            echo "run=1" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Materialize Grok auth from secret
+        if: steps.gate.outputs.run == '1'
+        env:
+          GROK_AUTH_JSON: ${{ secrets.GROK_AUTH_JSON }}
+        run: |
+          mkdir -p "$HOME/.grok/bin"
+          printf '%s' "$GROK_AUTH_JSON" > "$HOME/.grok/auth.json"
+      # Install remains TBD pending a pinnable grok installer — see
+      # docs/known-issues/grok-installer-pinning.md. This only fails when the
+      # secret IS set but the CLI still isn't wired, which is the honest signal.
+      - name: Ensure grok CLI available
+        if: steps.gate.outputs.run == '1'
+        run: command -v grok || { echo "grok CLI not installed on runner — install step TBD by maintainer (docs/known-issues/grok-installer-pinning.md)"; exit 1; }
+      - name: Install local payload
+        if: steps.gate.outputs.run == '1'
+        run: scripts/local/install-local.sh --force
+      - name: Run real /omgb e2e
+        if: steps.gate.outputs.run == '1'
+        run: npm run e2e:real

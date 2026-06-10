@@ -11,6 +11,7 @@
     "e2e:structural": "OMGB_E2E_STRUCTURAL=1 bash scripts/local/e2e.sh",
     "e2e:headless": "OMGB_E2E_HEADLESS=1 bash scripts/local/e2e.sh",
     "e2e:real-omgb": "OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 bash scripts/local/e2e.sh",
+    "e2e:real": "OMGB_E2E_HEADLESS=1 OMGB_E2E_REAL_OMGB=1 bash scripts/local/e2e.sh",
     "verify": "npm test && npm run e2e:structural"
   },
   "keywords": [
