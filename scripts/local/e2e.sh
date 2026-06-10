@@ -25,8 +25,8 @@
 
 set -euo pipefail
 
-# Contract aliases: OMX_E2E_* are the cross-repo canonical flags; the OMGB_*
-# flags remain the brand-native names.
+# Contract aliases: the OMGB_E2E_* flags are canonical (brand-native); the
+# OMX_E2E_* forms are accepted as cross-repo fallback aliases only.
 : "${OMGB_E2E_STRUCTURAL:=${OMX_E2E_STRUCTURAL:-0}}"
 : "${OMGB_E2E_HEADLESS:=${OMX_E2E_HEADLESS:-0}}"
 : "${OMGB_E2E_REAL_OMGB:=${OMX_E2E_REAL:-0}}"

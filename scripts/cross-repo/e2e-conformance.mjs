@@ -62,6 +62,33 @@ export function checkRepoConformance(repoDir, opts = {}) {
     } catch (e) {
       failures.push(`e2e:structural failed: ${(e.stderr || e.message || '').toString().slice(0, 400)}`);
     }
+
+    // Validate that e2e-result.json was written, is parseable, has a tier field,
+    // and that every path listed in evidence_paths exists on disk.
+    if (contract.evidenceDir) {
+      const resultPath = join(repoDir, contract.evidenceDir, 'e2e-result.json');
+      if (!existsSync(resultPath)) {
+        failures.push(`evidence validation: ${contract.evidenceDir}/e2e-result.json not found after structural run`);
+      } else {
+        let result = null;
+        try {
+          result = JSON.parse(readFileSync(resultPath, 'utf8'));
+        } catch (e) {
+          failures.push(`evidence validation: e2e-result.json is not valid JSON: ${e.message}`);
+        }
+        if (result !== null) {
+          if (!('tier' in result)) {
+            failures.push('evidence validation: e2e-result.json missing required field: tier');
+          }
+          const paths = Array.isArray(result.evidence_paths) ? result.evidence_paths : [];
+          for (const p of paths) {
+            if (!existsSync(p)) {
+              failures.push(`evidence validation: evidence_paths entry does not exist on disk: ${p}`);
+            }
+          }
+        }
+      }
+    }
   }
 
   return { repoDir, brand: contract?.brand ?? null, passed: failures.length === 0, failures };
