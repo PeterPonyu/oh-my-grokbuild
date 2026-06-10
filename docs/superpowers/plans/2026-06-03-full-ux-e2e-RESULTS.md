@@ -57,3 +57,52 @@ These steps consume model quota and/or push to the PeterPonyu remotes. Run per r
 5. **Watch CI:** `gh run watch` — confirm the `e2e-real` lane is green (and `[<BRAND>] e2e passed (tier=real)` appears in the log).
 
 **antigravity can go first** — its real tier is deterministic, needs no secret, and its CI `e2e-real` job will pass on a stock runner.
+
+---
+
+## Evidence status correction — 2026-06-09
+
+> **Note:** This section appends an honest accounting of what the checked-in
+> evidence actually proves. The original "4/4 repos FULL" headline is preserved
+> for historical accuracy; the qualification below is required for correctness.
+
+### What the conformance gate actually validated at HEAD
+
+The `e2e-conformance.mjs` run above exercised the **structural tier only**.
+Each `PASS` entry confirmed:
+
+- `e2e-contract.json` present and schema-valid
+- `package.json` declares `e2e:structural`, `e2e:headless`, `e2e:real`, `verify`
+- `scripts/local/e2e.sh` present
+- `npm run e2e:structural` printed the required `[<BRAND>] structural e2e passed` marker
+
+No `e2e-result.json` with `tier=real` was produced or validated during this
+run. The checked-in evidence file (`.omgb/evidence/e2e-result.json`, if
+present) is structural-tier only.
+
+### CI real tier status at HEAD
+
+The `e2e-real` job in `ci.yml` is **fail-closed** pending a grok CLI install
+step. Line 88 of `.github/workflows/ci.yml` reads:
+
+```
+command -v grok || { echo "grok CLI not installed on runner — install step TBD by maintainer"; exit 1; }
+```
+
+This guard ensures the job fails loudly rather than silently skipping. As of
+commit `b3e670d` (the HEAD at time of this correction) no grok install step
+precedes the guard, so the real CI lane has **not yet executed** a live
+`/omgb` run in CI.
+
+### Corrected interpretation of "4/4 repos FULL"
+
+| Claim | Accurate? | Notes |
+|---|---|---|
+| 4/4 repos have tiered harness (structural/headless/real) | ✅ | Harness files present in all repos |
+| 4/4 repos pass structural conformance gate | ✅ | Verified by the conformance run above |
+| 4/4 repos' real tiers have been executed | ❌ | Only oh-my-antigravity's real tier is deterministic; others need quota/secrets |
+| oh-my-grokbuild CI real lane is green | ❌ | Blocked by missing grok installer (ci.yml:88 guard, commit b3e670d) |
+
+"FULL" in the conformance output means structural conformance is complete for
+all four repos. It does **not** imply real-tier execution. See the outward
+batch checklist above for the remaining steps to achieve real-tier CI green.
