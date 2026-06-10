@@ -54,8 +54,11 @@ cleanup_probe_runs() {
       target="$(readlink "$link" 2>/dev/null || true)"
       # macOS sets TMPDIR with a trailing slash, so paths built from it carry
       # '//' (e.g. .../T//omgb-*) and defeat the literal prefix matches below.
-      # Squeeze duplicate slashes before matching.
-      while [[ "$target" == *//* ]]; do target="${target//\/\//\/}"; done
+      # Squeeze duplicate slashes before matching. Uses tr (not bash pattern
+      # substitution) so it behaves identically on macOS's bash 3.2.
+      if [[ "$target" == *"//"* ]]; then
+        target="$(printf '%s' "$target" | tr -s '/')"
+      fi
       case "$target" in
         "$PROBE_RUNS_ROOT"/*|"${STRUCT_TMP:-__omgb_no_struct_tmp__}"/*|"${REAL_OMGB_TMP:-__omgb_no_real_tmp__}"/*)
           rm -f -- "$link"
