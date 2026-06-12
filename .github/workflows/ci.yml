@@ -38,10 +38,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Install grok CLI
+      - name: Install pinned grok CLI
+        env:
+          GROK_CLI_VERSION: "0.2.51"
+          GROK_CLI_SHA256: "52916267aa2f7868c23a6dd7847dfe066e39a52b8ffd216380186397ea7d0075"
         run: |
-          curl -fsSL https://x.ai/cli/install.sh | bash
-          echo "$HOME/.grok/bin" >> $GITHUB_PATH
+          set -euo pipefail
+          mkdir -p "$HOME/.grok/downloads" "$HOME/.grok/bin"
+          artifact="$HOME/.grok/downloads/grok-${GROK_CLI_VERSION}-linux-x86_64"
+          download_url="https://x.ai/cli/grok-${GROK_CLI_VERSION}-linux-x86_64"
+
+          curl -fsSL "$download_url" -o "$artifact"
+          echo "${GROK_CLI_SHA256}  ${artifact}" | sha256sum -c -
+          chmod +x "$artifact"
+          "$artifact" --version
+
+          ln -sf "$artifact" "$HOME/.grok/bin/grok"
+          ln -sf "$artifact" "$HOME/.grok/bin/agent"
+          echo "$HOME/.grok/bin" >> "$GITHUB_PATH"
       - name: Install local payload into temp Grok home
         run: |
           export HOME="$RUNNER_TEMP/omgb-home"
