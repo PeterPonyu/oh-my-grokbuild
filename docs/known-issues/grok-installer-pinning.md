@@ -1,61 +1,41 @@
-# Known Issue: Unpinned grok CLI installer in CI
+# Known Issue: grok CLI installer pinning in CI
 
-**Status:** Open  
-**Tracking:** Committed as a follow-up in `b3e670d`; no issue filed yet.  
-**Affected file:** `.github/workflows/ci.yml`, `shell-lanes` job, "Install grok CLI" step  
+**Status:** mitigated in CI — the shell lane downloads a fixed Grok CLI artifact and verifies SHA-256.
+**Tracking:** opened as security review follow-up issue #64.
+**Affected file:** `.github/workflows/ci.yml`, `shell-lanes` job, "Install pinned grok CLI" step
 
-## Problem
+## What the workflow does now
 
-The `shell-lanes` CI job installs the grok CLI via:
+The `shell-lanes` CI job no longer executes the mutable installer script from
+`https://x.ai/cli/install.sh`. Instead, it downloads the pinned Linux x86_64
+artifact directly and verifies the expected SHA-256 before adding `grok` to
+`PATH`.
+
+Current CI pin:
 
 ```yaml
-- name: Install grok CLI
-  run: |
-    curl -fsSL https://x.ai/cli/install.sh | bash
+GROK_CLI_VERSION: "0.2.51"
+GROK_CLI_SHA256: "52916267aa2f7868c23a6dd7847dfe066e39a52b8ffd216380186397ea7d0075"
 ```
 
-This pattern has two supply-chain risks:
+This keeps the credential-free shell lane reproducible and removes live
+`curl | bash` execution from PR/push workflows.
 
-1. **No version pin.** The install script always fetches the latest release.
-   A breaking upstream change will silently change the version under test,
-   potentially causing false-green or false-red CI results.
+## Remaining supply-chain considerations
 
-2. **No checksum verification.** The install script is piped directly into
-   `bash` over HTTPS without verifying a SHA-256 or GPG signature. A
-   compromised CDN or DNS spoofing could execute arbitrary code on the runner.
+| Risk | Current control |
+|---|---|
+| Silent upstream upgrades | The workflow pins `GROK_CLI_VERSION`; CI keeps using that artifact until the pin changes. |
+| Artifact tampering or CDN drift | `sha256sum -c -` verifies the downloaded binary before execution. |
+| Mutable installer script execution | CI does not execute `https://x.ai/cli/install.sh`; it downloads the versioned artifact directly. |
+| Intentional upgrades | Maintainers must update both the version and checksum in one PR, then rerun shell-lanes. |
 
-## Why it is not fixed yet
+## How to update the pin
 
-The xAI grok CLI installer (`https://x.ai/cli/install.sh`) does not currently
-expose a versioned download URL or a published checksum file. Pinning is not
-possible without one of:
+1. Check the intended stable version, for example `curl -fsSL https://x.ai/cli/stable`.
+2. Download `https://x.ai/cli/grok-<version>-linux-x86_64` and compute `sha256sum`.
+3. Update `GROK_CLI_VERSION` and `GROK_CLI_SHA256` together in `.github/workflows/ci.yml`.
+4. Run `npm test` and the credential-free shell lane or `npm run e2e:structural`.
 
-- A versioned artifact URL (e.g. `https://x.ai/cli/releases/v1.2.3/grok-linux-amd64`)
-- A checksum manifest signed by xAI
-- A package registry entry (e.g. `npm install -g @xai/grok@1.2.3`)
-
-Until xAI provides one of the above, the piped-install pattern is the only
-supported mechanism.
-
-## Mitigation in place
-
-- The `shell-lanes` job runs with `persist-credentials: false` and
-  `permissions: contents: read` (least-privilege), limiting blast radius.
-- The job uses a temporary `$RUNNER_TEMP/omgb-home` to avoid polluting the
-  default `$HOME`.
-- The `e2e-real` job is **fail-closed**: it requires `GROK_AUTH_JSON` and
-  does not install grok via the unpinned script (it expects grok to already
-  be on PATH or fails with an explicit message).
-
-## Remediation plan
-
-When xAI publishes a stable versioned artifact or checksum:
-
-1. Replace the `curl | bash` with a pinned download + verification step.
-2. Update this document to reflect the pinned version.
-3. Add a `# PINNED:` comment at the CI step and close this issue.
-
-## References
-
-- CI workflow: `.github/workflows/ci.yml` (shell-lanes job, "Install grok CLI" step)
-- Commit that acknowledged this gap: `b3e670d` ("grok installer not arg-pinnable; pin tracked as a follow-up issue")
+Do not reintroduce `curl -fsSL https://x.ai/cli/install.sh | bash` in CI; doing
+so would restore mutable remote-code execution on every workflow run.
